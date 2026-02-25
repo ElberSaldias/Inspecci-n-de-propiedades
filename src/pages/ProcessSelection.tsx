@@ -127,7 +127,7 @@ const ProcessSelection: React.FC = () => {
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Nombre Completo</label>
                         <input
                             type="text"
-                            className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
+                            className="block w-full h-[50px] px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
                             placeholder="Nombre del propietario"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
@@ -138,7 +138,7 @@ const ProcessSelection: React.FC = () => {
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">RUT</label>
                         <input
                             type="text"
-                            className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
+                            className="block w-full h-[50px] px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
                             placeholder="12.345.678-9"
                             value={rut}
                             onChange={(e) => setRut(e.target.value)}
@@ -148,13 +148,13 @@ const ProcessSelection: React.FC = () => {
                     <div className="grid gap-5 sm:grid-cols-2">
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Teléfono</label>
-                            <div className={`flex shadow-sm rounded-xl overflow-hidden border ${validationError.includes('número') ? 'border-red-300 ring-1 ring-red-300' : 'border-slate-200'} focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500`}>
-                                <div className="bg-slate-50 px-3 py-3 text-slate-500 font-black border-r border-slate-200 flex items-center text-sm select-none">
+                            <div className={`flex h-[50px] shadow-sm rounded-xl overflow-hidden border ${validationError.includes('número') ? 'border-red-300 ring-1 ring-red-300' : 'border-slate-200'} focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500 transition-all`}>
+                                <div className="bg-slate-50 px-4 flex items-center justify-center text-slate-500 font-bold border-r border-slate-200 text-sm select-none whitespace-nowrap min-w-[72px]">
                                     +56 9
                                 </div>
                                 <input
                                     type="tel"
-                                    className="block w-full px-4 py-3 bg-white text-slate-900 font-medium outline-none placeholder:text-slate-300"
+                                    className="flex-1 px-4 py-3 bg-white text-slate-900 font-medium outline-none placeholder:text-slate-300"
                                     placeholder="1234 5678"
                                     maxLength={8}
                                     value={phoneSuffix}
@@ -170,7 +170,7 @@ const ProcessSelection: React.FC = () => {
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Email</label>
                             <input
                                 type="email"
-                                className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
+                                className="block w-full h-[50px] px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
                                 placeholder="usuario@ejemplo.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
