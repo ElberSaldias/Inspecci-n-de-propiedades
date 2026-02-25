@@ -127,22 +127,21 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             let realEmail = '';
             let realRole = 'Inspector';
 
-            for (const user of parsed.data as Record<string, string>[]) {
-                // Buscamos las columnas flexibilizando espacios o capitalización
+            for (const user of parsed.data as any[]) {
                 const keys = Object.keys(user);
-                const emailKey = keys.find(k => k.toLowerCase().includes('email')) || 'Email';
-                const rutKey = keys.find(k => k.toLowerCase().includes('rut') || k.toLowerCase().includes('id')) || 'RUT / ID';
-                const nameKey = keys.find(k => k.toLowerCase().includes('nombre') || k.toLowerCase().includes('completo')) || 'Nombre Completo';
-                const roleKey = keys.find(k => k.toLowerCase().includes('rol')) || 'Rol';
+                const getVal = (names: string[]) => {
+                    const key = keys.find(k => names.some(n => k.toLowerCase().trim().includes(n.toLowerCase())));
+                    return key ? (user[key] || '').toString().trim() : '';
+                };
 
-                const uEmail = (user[emailKey] || '').trim().toLowerCase();
-                const uRut = (user[rutKey] || '').toLowerCase().replace(/[^0-9k]/g, '');
+                const uEmail = getVal(['email']).toLowerCase();
+                const uRut = getVal(['rut', 'id']).toLowerCase().replace(/[^0-9k]/g, '');
 
                 if ((isEmailLogin && uEmail === currentStr) || (!isEmailLogin && uRut === normalizedRut)) {
                     matchedUser = user;
-                    realName = user[nameKey] || 'Usuario';
-                    realEmail = user[emailKey] || '';
-                    realRole = user[roleKey] || 'Inspector';
+                    realName = getVal(['nombre', 'completo']) || 'Usuario';
+                    realEmail = getVal(['email']) || '';
+                    realRole = getVal(['rol']) || 'Inspector';
                     break;
                 }
             }
@@ -166,32 +165,14 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     fetchData: async () => {
         set({ isLoadingData: true, dataError: null });
         try {
-            // Cache buster para refrescar siempre los nuevos departamentos
-            const response = await fetch(`https://docs.google.com/spreadsheets/d/e/2PACX-1vSjo8-wZ72MSUQcaKuooUzuxk1Uj8FTV1DeMEy24z5pqIDblK2GfCOAT3E2S3aQBnbOmoe6VbBt-Qey/pub?output=csv&t=${Date.now()}`, { cache: "no-store" });
+            // Se elimina el param t= para evitar errores en algunos proxies de Google, usando headers de cache
+            const response = await fetch(`https://docs.google.com/spreadsheets/d/e/2PACX-1vSjo8-wZ72MSUQcaKuooUzuxk1Uj8FTV1DeMEy24z5pqIDblK2GfCOAT3E2S3aQBnbOmoe6VbBt-Qey/pub?output=csv`, {
+                cache: "no-store",
+                headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
+            });
             const unitsCsvText = await response.text();
 
-            interface CsvRow {
-                id_inspector?: string;
-                tipo_proceso?: string;
-                departamento?: string;
-                estacionamiento?: string;
-                bodega?: string;
-                edificio?: string;
-                direccion?: string;
-                cliente?: string;
-                estado?: string;
-                fecha?: string;
-                hora?: string;
-                acta_status?: string;
-                acta_url?: string;
-                acta_pdf_url?: string;
-                acta_id?: string;
-                acta_updated_at?: string;
-                proceso_status?: string;
-                proceso_completed_at?: string;
-                proceso_completed_by?: string;
-                proceso_notes?: string;
-            }
+
 
             Papa.parse(unitsCsvText, {
                 header: true,
@@ -201,56 +182,58 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                     const parsedProjects: Project[] = [];
                     const projectMap = new Map<string, Project>();
 
-                    (results.data as CsvRow[]).forEach((row) => {
-                        // Extract project
-                        const projectName = row.edificio || 'Sin Edificio';
-                        const projectAddress = row.direccion || '';
-                        // Basic ID generation logic based on name
-                        const projectId = `proj-${projectName.replace(/\s+/g, '-').toLowerCase()}`;
+                    (results.data as any[]).forEach((row) => {
+                        const keys = Object.keys(row);
+                        const getVal = (names: string[]) => {
+                            const key = keys.find(k => names.includes(k.toLowerCase().trim()));
+                            return key ? (row[key] || '').toString().trim() : '';
+                        };
+
+                        const edificio = getVal(['edificio', 'proyecto']);
+                        const direccion = getVal(['direccion']);
+                        const departamento = getVal(['departamento', 'depto', 'unidad']);
+                        const name = edificio || 'Sin Edificio';
+                        const projectId = `proj-${name.replace(/\s+/g, '-').toLowerCase()}`;
 
                         if (!projectMap.has(projectId)) {
                             const newProject: Project = {
                                 id: projectId,
-                                name: projectName,
-                                address: projectAddress,
+                                name: name,
+                                address: direccion || '',
                                 status: 'ACTIVE'
                             };
                             projectMap.set(projectId, newProject);
                             parsedProjects.push(newProject);
                         }
 
-                        // Determine status
+                        const rawTipo = getVal(['tipo_proceso', 'proceso']);
                         let status: Unit['status'] = 'PENDING';
-                        if (row.tipo_proceso === 'PRE ENTREGA') status = 'PRE_ENTREGA';
-                        else if (row.tipo_proceso === 'ENTREGADO') status = 'ENTREGADO';
+                        if (rawTipo.toUpperCase().includes('PRE')) status = 'PRE_ENTREGA';
+                        else if (rawTipo.toUpperCase().includes('ENTREGA')) status = 'ENTREGADO';
 
-                        // Create unit
-                        const unitId = `unit-${projectId}-${row.departamento}`;
+                        const unitId = `unit-${projectId}-${departamento}`;
                         parsedUnits.push({
                             id: unitId,
                             projectId: projectId,
-                            number: row.departamento || '',
-                            ownerName: row.cliente || '',
-                            ownerRut: '', // Not provided directly in CSV
+                            number: departamento,
+                            ownerName: getVal(['cliente', 'propietario']),
+                            ownerRut: '',
                             status: status,
-
-                            // CSV-specific mapping
-                            inspectorId: row.id_inspector || '',
-                            processTypeLabel: row.tipo_proceso || '',
-                            parking: row.estacionamiento || '',
-                            storage: row.bodega || '',
-                            projectAddress: projectAddress,
-                            activeState: row.estado || '',
-                            date: row.fecha || '',
-                            time: row.hora || '',
-                            isHandoverGenerated: (row.acta_status || '').toUpperCase() === 'GENERADA',
-                            handoverUrl: row.acta_url || row.acta_pdf_url || undefined,
-                            handoverDate: row.acta_updated_at || undefined,
-
-                            procesoStatus: (row.proceso_status || '').trim().toUpperCase() as Unit['procesoStatus'],
-                            procesoCompletedAt: row.proceso_completed_at,
-                            procesoCompletedBy: row.proceso_completed_by,
-                            procesoNotes: row.proceso_notes
+                            inspectorId: getVal(['id_inspector', 'inspector']),
+                            processTypeLabel: rawTipo,
+                            parking: getVal(['estacionamiento']),
+                            storage: getVal(['bodega']),
+                            projectAddress: direccion,
+                            activeState: getVal(['estado']),
+                            date: getVal(['fecha']),
+                            time: getVal(['hora']),
+                            isHandoverGenerated: getVal(['acta_status']).toUpperCase() === 'GENERADA',
+                            handoverUrl: getVal(['acta_url']) || getVal(['acta_pdf_url']) || undefined,
+                            handoverDate: getVal(['acta_updated_at']) || undefined,
+                            procesoStatus: getVal(['proceso_status', 'status_proceso', 'status']).toUpperCase() as Unit['procesoStatus'],
+                            procesoCompletedAt: getVal(['proceso_completed_at']),
+                            procesoCompletedBy: getVal(['proceso_completed_by']),
+                            procesoNotes: getVal(['proceso_notes'])
                         });
                     });
 
@@ -316,12 +299,12 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         const normalizedHora = normalizeTime(state.selectedUnit.time || "");
 
         const payload = {
-            // CRITERIOS DE BÚSQUEDA (Coincidencia exacta por 5 campos solicitados)
-            id_inspector: state.selectedUnit.inspectorId || "",
-            tipo_proceso: state.selectedUnit.processTypeLabel || "",
-            departamento: state.selectedUnit.number || "",
-            fecha: normalizedFecha,
-            hora: normalizedHora,
+            // CRITERIOS DE BÚSQUEDA (Coincidencia exacta por 5 campos solicitados con trim preventivo)
+            id_inspector: (state.selectedUnit.inspectorId || "").trim(),
+            tipo_proceso: (state.selectedUnit.processTypeLabel || "").trim(),
+            departamento: (state.selectedUnit.number || "").trim(),
+            fecha: normalizedFecha.trim(),
+            hora: normalizedHora.trim(),
 
             // DATOS DE ACTUALIZACIÓN (Columna L y nuevas)
             proceso_status: 'REALIZADA',
