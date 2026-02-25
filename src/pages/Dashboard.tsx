@@ -19,13 +19,8 @@ const Dashboard: React.FC = () => {
     const upcomingDeliveries = getUpcomingDeliveries();
 
     const handleStartProcess = () => {
-        if (upcomingDeliveries.length === 1) {
-            useInspectionStore.getState().setSelectedUnit(upcomingDeliveries[0]);
-            navigate('/process');
-        } else {
-            clearSession();
-            navigate('/identify');
-        }
+        clearSession();
+        navigate('/identify');
     };
 
     const handleSelectUnit = (unit: Unit) => {
