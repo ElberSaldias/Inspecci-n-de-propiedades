@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInspectionStore } from '../store/useInspectionStore';
 import { UserCheck, Building, AlertCircle, ArrowRight } from 'lucide-react';
+import type { ProcessType } from '../types';
 
 
 const ProcessSelection: React.FC = () => {
@@ -36,8 +37,17 @@ const ProcessSelection: React.FC = () => {
         if (selectedUnit.isHandoverGenerated) {
             alert('Esta unidad ya cuenta con acta generada.');
             navigate('/');
+            return;
         }
-    }, [selectedUnit, navigate]);
+
+        // Ensure processType is set if we arrive here directly
+        if (!useInspectionStore.getState().processType && selectedUnit.processTypeLabel) {
+            const type: ProcessType = selectedUnit.processTypeLabel.toUpperCase().includes('PRE')
+                ? 'PRE_ENTREGA'
+                : 'ENTREGA_FINAL';
+            setProcessType(type);
+        }
+    }, [selectedUnit, navigate, setProcessType]);
 
     const handleConfirm = () => {
         setValidationError('');

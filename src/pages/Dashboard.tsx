@@ -4,7 +4,7 @@ import { Calendar, MapPin, ArrowRight, ClipboardCheck, Loader2, Clock, User, Fil
 import { format, parse, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useInspectionStore } from '../store/useInspectionStore';
-import type { Unit } from '../types';
+import type { Unit, ProcessType } from '../types';
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -32,10 +32,10 @@ const Dashboard: React.FC = () => {
     const countTotal = upcomingDeliveries.length;
 
     let bannerSubtitle = '';
-    let sectionTitle = 'Próximas actividades (14 días)';
+    let sectionTitle = 'Próximos procesos (14 días)';
 
     if (countTotal === 0) {
-        bannerSubtitle = 'No tienes entregas programadas en los próximos 14 días.';
+        bannerSubtitle = 'No tienes procesos programados en los próximos 14 días.';
         sectionTitle = 'Próximas entregas (14 días)';
     } else if (countPre > 0 && countEnt === 0) {
         bannerSubtitle = `Tienes ${countPre} pre-entrega${countPre > 1 ? 's' : ''} programada${countPre > 1 ? 's' : ''} en los próximos 14 días.`;
@@ -44,10 +44,9 @@ const Dashboard: React.FC = () => {
         bannerSubtitle = `Tienes ${countEnt} entrega${countEnt > 1 ? 's' : ''} programada${countEnt > 1 ? 's' : ''} en los próximos 14 días.`;
         sectionTitle = 'Próximas entregas (14 días)';
     } else {
-        bannerSubtitle = `Tienes ${countTotal} actividades programadas en los próximos 14 días.`;
-        const breakdown = `${countPre} pre-entrega${countPre !== 1 ? 's' : ''} y ${countEnt} entrega${countEnt !== 1 ? 's' : ''}.`;
-        bannerSubtitle = `Tienes ${countTotal} actividades programadas en los próximos 14 días. ${breakdown}`;
-        sectionTitle = 'Próximas actividades (14 días)';
+        const breakdown = `(${countPre} pre-entrega${countPre !== 1 ? 's' : ''} / ${countEnt} entrega${countEnt !== 1 ? 's' : ''})`;
+        bannerSubtitle = `Tienes ${countTotal} procesos programados en los próximos 14 días. ${breakdown}`;
+        sectionTitle = 'Próximos procesos (14 días)';
     }
 
     const handleSelectUnit = (unit: Unit) => {
@@ -55,7 +54,16 @@ const Dashboard: React.FC = () => {
             alert('Esta unidad ya cuenta con acta generada. Puedes ver o descargar el acta desde el dashboard.');
             return;
         }
-        useInspectionStore.getState().setSelectedUnit(unit);
+
+        const store = useInspectionStore.getState();
+        store.setSelectedUnit(unit);
+
+        // Auto-set process type based on label
+        const type: ProcessType = (unit.processTypeLabel || '').toUpperCase().includes('PRE')
+            ? 'PRE_ENTREGA'
+            : 'ENTREGA_FINAL';
+        store.setProcessType(type);
+
         navigate('/process');
     };
 

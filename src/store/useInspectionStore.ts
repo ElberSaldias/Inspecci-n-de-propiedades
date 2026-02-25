@@ -66,28 +66,28 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         return calculatedDv === dv;
     },
 
-    setInspectorRut: (rut) => set({ inspectorRut: rut }),
+    setInspectorRut: (rut: string | null) => set({ inspectorRut: rut }),
 
-    setSelectedUnit: (unit) => set({ selectedUnit: unit }),
+    setSelectedUnit: (unit: Unit | null) => set({ selectedUnit: unit }),
 
-    updateSelectedUnit: (updates) => set((state) => ({
+    updateSelectedUnit: (updates: Partial<Unit>) => set((state) => ({
         selectedUnit: state.selectedUnit ? { ...state.selectedUnit, ...updates } : null
     })),
 
-    setProcessType: (type) => set({ processType: type }),
+    setProcessType: (type: ProcessType | null) => set({ processType: type }),
 
-    addObservation: (obs) => set((state) => ({
+    addObservation: (obs: Omit<Observation, 'id'>) => set((state) => ({
         observations: [
             ...state.observations,
             { ...obs, id: Math.random().toString(36).substr(2, 9) }
         ]
     })),
 
-    removeObservation: (id) => set((state) => ({
+    removeObservation: (id: string) => set((state) => ({
         observations: state.observations.filter(o => o.id !== id)
     })),
 
-    updateObservationStatus: (id, status) => set((state) => ({
+    updateObservationStatus: (id: string, status: Observation['status']) => set((state) => ({
         observations: state.observations.map(o =>
             o.id === id ? { ...o, status } : o
         )
@@ -182,6 +182,10 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 estado?: string;
                 fecha?: string;
                 hora?: string;
+                acta_status?: string;
+                acta_url?: string;
+                acta_id?: string;
+                acta_updated_at?: string;
             }
 
             Papa.parse(unitsCsvText, {
@@ -233,19 +237,23 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                             projectAddress: projectAddress,
                             activeState: row.estado || '',
                             date: row.fecha || '',
-                            time: row.hora || ''
+                            time: row.hora || '',
+                            isHandoverGenerated: (row.acta_status || '').toUpperCase() === 'GENERADA',
+                            handoverUrl: row.acta_url || undefined,
+                            handoverDate: row.acta_updated_at || undefined
                         });
                     });
 
-                    // Add some extra mock deliveries if the agenda is sparse for testing
-                    if (parsedUnits.length < 4) {
+                    // Add some extra mock deliveries ONLY if we have almost no real data for the current inspector
+                    const myInspectorId = (get().inspectorEmail || get().inspectorRut || '').toLowerCase().trim();
+                    const myUnits = parsedUnits.filter(u => (u.inspectorId || '').toLowerCase().trim() === myInspectorId);
+
+                    if (myUnits.length < 2) {
                         const now = new Date();
                         const mockData = [
-                            { name: 'Javier Pérez', depto: '202', type: 'PRE ENTREGA', dayOffset: 1 },
-                            { name: 'Claudia Soto', depto: '305', type: 'ENTREGA', dayOffset: 2 },
-                            { name: 'Andrés Vicuña', depto: '410', type: 'PRE ENTREGA', dayOffset: 3 },
-                            { name: 'Marta Lagos', depto: '101', type: 'ENTREGA', dayOffset: 4 },
-                            { name: 'Ricardo Gómez', depto: '502', type: 'PRE ENTREGA', dayOffset: 5 },
+                            { name: 'Javier Pérez', depto: '202', type: 'PRE ENTREGA', dayOffset: 1, acta: false },
+                            { name: 'Claudia Soto', depto: '305', type: 'ENTREGA', dayOffset: 2, acta: true },
+                            { name: 'Andrés Vicuña', depto: '410', type: 'PRE ENTREGA', dayOffset: 14, acta: false },
                         ];
 
                         mockData.forEach((item, i) => {
@@ -260,26 +268,21 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                                 ownerName: item.name,
                                 ownerRut: '12.345.678-9',
                                 status: 'PENDING',
-                                inspectorId: get().inspectorEmail || get().inspectorRut || '',
+                                inspectorId: myInspectorId,
                                 processTypeLabel: item.type,
                                 date: dateStr,
                                 time: '10:00',
-                                projectAddress: parsedProjects[0]?.address || 'Calle Test 123',
-                                activeState: 'PROGRAMADO'
+                                projectAddress: 'Mock Address 123',
+                                activeState: 'Activo',
+                                isHandoverGenerated: item.acta,
+                                handoverUrl: item.acta ? 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' : undefined,
+                                handoverDate: item.acta ? dateStr : undefined
                             });
                         });
                     }
 
-                    // Mock handover status for some units (e.g., every 5th unit)
-                    const enhancedUnits = parsedUnits.map((u, index) => ({
-                        ...u,
-                        isHandoverGenerated: index % 5 === 0,
-                        handoverUrl: index % 5 === 0 ? 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' : undefined,
-                        handoverDate: index % 5 === 0 ? u.date : undefined
-                    }));
-
                     set({
-                        units: enhancedUnits,
+                        units: parsedUnits,
                         projects: parsedProjects,
                         isLoadingData: false
                     });
@@ -354,7 +357,8 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         const { units, inspectorEmail, inspectorRut } = state;
 
         return units.filter(u => {
-            if (u.status === 'ENTREGADO') return false;
+            // Case insensitive check for "Activo"
+            if ((u.activeState || '').toLowerCase() !== 'activo') return false;
 
             const rowId = (u.inspectorId || '').toLowerCase().trim();
             const currentEmail = (inspectorEmail || '').toLowerCase().trim();
@@ -374,7 +378,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             let parsedDate = parseISO(dateStr);
 
             if (!isValid(parsedDate)) {
-                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd'];
+                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd', 'yyyy-MM-dd'];
                 for (const fmt of formats) {
                     const tempDate = parse(dateStr, fmt, new Date());
                     if (isValid(tempDate)) {
@@ -401,11 +405,12 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     getUpcomingDeliveries: () => {
         const state = get();
         const { units, inspectorEmail, inspectorRut } = state;
-        const now = new Date();
-        const endDate = addDays(now, 14);
+        const now = startOfDay(new Date());
+        const endDate = endOfDay(addDays(now, 14));
 
         return units.filter(u => {
-            if (u.status === 'ENTREGADO') return false;
+            // Case insensitive check for "Activo"
+            if ((u.activeState || '').toLowerCase() !== 'activo') return false;
 
             const rowId = (u.inspectorId || '').toLowerCase().trim();
             const currentEmail = (inspectorEmail || '').toLowerCase().trim();
@@ -425,7 +430,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             let parsedDate = parseISO(dateStr);
 
             if (!isValid(parsedDate)) {
-                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd'];
+                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd', 'yyyy-MM-dd'];
                 for (const fmt of formats) {
                     const tempDate = parse(dateStr, fmt, new Date());
                     if (isValid(tempDate)) {
@@ -438,8 +443,8 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             if (!isValid(parsedDate)) return false;
 
             return isWithinInterval(parsedDate, {
-                start: startOfDay(now),
-                end: endOfDay(endDate)
+                start: now,
+                end: endDate
             });
         }).sort((a, b) => {
             // Sort by date first

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInspectionStore } from '../store/useInspectionStore';
-import type { Unit } from '../types';
+import type { Unit, ProcessType } from '../types';
 import { Calendar, Clock, ChevronRight, MapPin, User, CheckCircle } from 'lucide-react';
 
 const IdentifyUnit: React.FC = () => {
@@ -11,7 +11,6 @@ const IdentifyUnit: React.FC = () => {
     const inspectorName = useInspectionStore((state) => state.inspectorName);
     const inspectorRut = useInspectionStore((state) => state.inspectorRut);
     const projects = useInspectionStore((state) => state.projects);
-    const setSelectedUnit = useInspectionStore((state) => state.setSelectedUnit);
     const getUpcomingDeliveries = useInspectionStore((state) => state.getUpcomingDeliveries);
 
     const upcomingDeliveries = getUpcomingDeliveries();
@@ -25,12 +24,21 @@ const IdentifyUnit: React.FC = () => {
             alert('Esta unidad ya cuenta con acta generada. Ver detalle en el Dashboard.');
             return;
         }
-        setSelectedUnit(unit);
+
+        const store = useInspectionStore.getState();
+        store.setSelectedUnit(unit);
+
+        // Auto-set process type based on label
+        const type: ProcessType = (unit.processTypeLabel || '').toUpperCase().includes('PRE')
+            ? 'PRE_ENTREGA'
+            : 'ENTREGA_FINAL';
+        store.setProcessType(type);
+
         navigate('/process');
     };
 
     return (
-        <div className="flex flex-col h-full animate-in fade-in duration-300 max-w-2xl mx-auto w-full pt-4 pb-20">
+        <div className="flex flex-col h-full animate-in fade-in duration-300 max-w-5xl mx-auto w-full pt-4 pb-20">
             <div className="text-center mb-6">
                 <div className="bg-primary-100 text-primary-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Calendar size={32} />
@@ -50,7 +58,7 @@ const IdentifyUnit: React.FC = () => {
                 <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Unidades programadas (próximos 14 días)</h2>
 
                 {upcomingDeliveries.length > 0 ? (
-                    <div className="grid gap-4">
+                    <div className="grid gap-5 grid-cols-1 md:grid-cols-2">
                         {upcomingDeliveries.map(unit => {
                             const project = getProjectForUnit(unit);
                             const isGenerated = unit.isHandoverGenerated;
