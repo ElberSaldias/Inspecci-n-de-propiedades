@@ -8,7 +8,7 @@ import type { Unit } from '../types';
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
-    const clearSession = useInspectionStore((state) => state.clearSession);
+    const inspectorEmail = useInspectionStore((state) => state.inspectorEmail);
     const inspectorRut = useInspectionStore((state) => state.inspectorRut);
     const inspectorName = useInspectionStore((state) => state.inspectorName);
     const projects = useInspectionStore((state) => state.projects);
@@ -17,11 +17,6 @@ const Dashboard: React.FC = () => {
 
     const getUpcomingDeliveries = useInspectionStore((state) => state.getUpcomingDeliveries);
     const upcomingDeliveries = getUpcomingDeliveries();
-
-    const handleStartProcess = () => {
-        clearSession();
-        navigate('/identify');
-    };
 
     const handleSelectUnit = (unit: Unit) => {
         useInspectionStore.getState().setSelectedUnit(unit);
@@ -69,15 +64,12 @@ const Dashboard: React.FC = () => {
         <div className="flex flex-col space-y-6 animate-in fade-in duration-300">
             <div className="bg-primary-600 text-white rounded-2xl p-6 shadow-md relative overflow-hidden">
                 <div className="relative z-10">
-                    <h1 className="text-2xl font-bold mb-1">Hola, {inspectorName || `Inspector ${inspectorRut}`}</h1>
-                    <p className="text-primary-100 mb-6 font-medium">Tienes {upcomingDeliveries.length} entregas programadas en los próximos 14 días.</p>
-                    <button
-                        onClick={handleStartProcess}
-                        className="bg-white text-primary-600 font-semibold py-3 px-6 rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center space-x-2 w-full sm:w-auto justify-center"
-                    >
-                        <span>Iniciar Nuevo Proceso</span>
-                        <ArrowRight size={20} />
-                    </button>
+                    <h1 className="text-2xl font-bold mb-1">Hola, {inspectorName || inspectorEmail || inspectorRut}</h1>
+                    <p className="text-primary-100 font-medium">
+                        {upcomingDeliveries.length > 0
+                            ? `Tienes ${upcomingDeliveries.length} entregas programadas en los próximos 14 días.`
+                            : 'No tienes entregas programadas en los próximos 14 días.'}
+                    </p>
                 </div>
 
                 {/* Decorative background element */}
@@ -93,9 +85,14 @@ const Dashboard: React.FC = () => {
                 </h2>
 
                 {upcomingDeliveries.length === 0 ? (
-                    <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center">
-                        <Calendar className="mx-auto text-slate-300 mb-4" size={48} />
-                        <p className="text-slate-500 font-medium whitespace-pre-wrap">No tienes entregas programadas en los próximos 14 días.</p>
+                    <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-16 text-center shadow-sm">
+                        <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <Calendar className="text-slate-300" size={40} />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">Sin entregas programadas</h3>
+                        <p className="text-slate-500 font-medium max-w-xs mx-auto">
+                            Actualmente no tienes inspecciones asignadas para los próximos 14 días.
+                        </p>
                     </div>
                 ) : (
                     <div className="grid gap-5 grid-cols-1 md:grid-cols-2">
