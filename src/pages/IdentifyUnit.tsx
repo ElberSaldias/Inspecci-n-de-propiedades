@@ -62,6 +62,7 @@ const IdentifyUnit: React.FC = () => {
                         {upcomingDeliveries.map(unit => {
                             const project = getProjectForUnit(unit);
                             const isGenerated = unit.isHandoverGenerated;
+                            const isEnProceso = unit.procesoStatus === 'EN_PROCESO';
                             const isRealizada = unit.procesoStatus === 'REALIZADA';
                             const isCancelada = unit.procesoStatus === 'CANCELADA';
                             const isBlocked = isGenerated || isRealizada || isCancelada;
@@ -71,7 +72,7 @@ const IdentifyUnit: React.FC = () => {
                                     key={unit.id}
                                     onClick={() => handleSelectUnit(unit)}
                                     disabled={isBlocked}
-                                    className={`bg-white p-6 rounded-3xl shadow-sm border-2 ${isBlocked ? 'border-slate-50 opacity-90 cursor-not-allowed bg-slate-50/10' : 'border-slate-100 hover:border-primary-500 hover:shadow-lg active:scale-[0.98]'} flex flex-col items-start text-left transition-all group relative overflow-hidden`}
+                                    className={`bg-white p-6 rounded-3xl shadow-sm border-2 ${isBlocked ? 'border-slate-50 opacity-60 cursor-not-allowed bg-slate-50/10' : isEnProceso ? 'border-amber-200 bg-amber-50/5 hover:border-amber-500' : 'border-slate-100 hover:border-primary-500 hover:shadow-lg active:scale-[0.98]'} flex flex-col items-start text-left transition-all group relative overflow-hidden`}
                                 >
                                     <div className="flex justify-between w-full mb-3">
                                         <div className="flex flex-col space-y-1">
@@ -79,17 +80,22 @@ const IdentifyUnit: React.FC = () => {
                                                 {unit.processTypeLabel || 'INSPECCIÓN'}
                                             </span>
                                             {isGenerated && (
-                                                <span className="inline-flex items-center rounded-lg bg-green-100 px-3 py-1 text-[10px] font-bold text-green-700 uppercase tracking-widest">
+                                                <span className="inline-flex items-center rounded-lg bg-green-50 px-3 py-1 text-[10px] font-bold text-green-700 uppercase tracking-widest ring-1 ring-inset ring-green-600/10">
                                                     ACTA GENERADA
                                                 </span>
                                             )}
+                                            {isEnProceso && (
+                                                <span className="inline-flex items-center rounded-lg bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-700 uppercase tracking-widest ring-1 ring-inset ring-amber-600/10">
+                                                    EN PROCESO
+                                                </span>
+                                            )}
                                             {isRealizada && !isGenerated && (
-                                                <span className="inline-flex items-center rounded-lg bg-blue-100 px-3 py-1 text-[10px] font-bold text-blue-700 uppercase tracking-widest">
+                                                <span className="inline-flex items-center rounded-lg bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-600 uppercase tracking-widest ring-1 ring-inset ring-slate-400/20">
                                                     PROCESO REALIZADO
                                                 </span>
                                             )}
                                             {isCancelada && (
-                                                <span className="inline-flex items-center rounded-lg bg-red-100 px-3 py-1 text-[10px] font-bold text-red-700 uppercase tracking-widest">
+                                                <span className="inline-flex items-center rounded-lg bg-red-50 px-3 py-1 text-[10px] font-bold text-red-700 uppercase tracking-widest ring-1 ring-inset ring-red-600/10">
                                                     CANCELADA
                                                 </span>
                                             )}
@@ -131,7 +137,7 @@ const IdentifyUnit: React.FC = () => {
                                     )}
 
                                     {isRealizada && !isGenerated && (
-                                        <div className="absolute top-1/2 right-4 -translate-y-1/2 text-blue-200">
+                                        <div className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-200">
                                             <CheckCircle size={32} />
                                         </div>
                                     )}

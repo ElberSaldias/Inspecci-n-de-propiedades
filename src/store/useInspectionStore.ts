@@ -184,6 +184,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 hora?: string;
                 acta_status?: string;
                 acta_url?: string;
+                acta_pdf_url?: string;
                 acta_id?: string;
                 acta_updated_at?: string;
                 proceso_status?: string;
@@ -243,7 +244,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                             date: row.fecha || '',
                             time: row.hora || '',
                             isHandoverGenerated: (row.acta_status || '').toUpperCase() === 'GENERADA',
-                            handoverUrl: row.acta_url || undefined,
+                            handoverUrl: row.acta_url || row.acta_pdf_url || undefined,
                             handoverDate: row.acta_updated_at || undefined,
 
                             procesoStatus: (row.proceso_status || '') as Unit['procesoStatus'],
@@ -261,9 +262,10 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                         const now = new Date();
                         const mockData = [
                             { name: 'Javier Pérez', depto: '202', type: 'PRE ENTREGA', dayOffset: 1, acta: false, procStatus: 'PROGRAMADA' },
+                            { name: 'Sofía Castro', depto: '105', type: 'PRE ENTREGA', dayOffset: 0, acta: false, procStatus: 'EN_PROCESO' },
                             { name: 'Claudia Soto', depto: '305', type: 'ENTREGA', dayOffset: 2, acta: true, procStatus: 'REALIZADA' },
                             { name: 'Andrés Vicuña', depto: '410', type: 'PRE ENTREGA', dayOffset: 14, acta: false, procStatus: 'PROGRAMADA' },
-                            { name: 'Pedro Marmol', depto: '505', type: 'ENTREGA', dayOffset: 0, acta: false, procStatus: 'REALIZADA' },
+                            { name: 'Pedro Marmol', depto: '505', type: 'ENTREGA', dayOffset: -1, acta: false, procStatus: 'CANCELADA' },
                         ];
 
                         mockData.forEach((item, i) => {
@@ -327,7 +329,46 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             'r9': 'Terraza', 'r10': 'Bodega', 'r11': 'Estacionamiento'
         };
 
+        // Normalizar fecha y hora para coincidir exactamente con la hoja de cálculo (dd-mm-aaaa y hh:mm)
+        const normalizeDate = (dateStr: string) => {
+            if (!dateStr) return "";
+            // Si ya viene formateado dd-mm-yyyy lo respetamos
+            if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) return dateStr;
+
+            let d = parseISO(dateStr);
+            if (!isValid(d)) {
+                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd', 'yyyy-MM-dd'];
+                for (const fmt of formats) {
+                    const temp = parse(dateStr, fmt, new Date());
+                    if (isValid(temp)) { d = temp; break; }
+                }
+            }
+            return isValid(d) ? format(d, 'dd-MM-yyyy') : dateStr;
+        };
+
+        const normalizeTime = (timeStr: string) => {
+            if (!timeStr) return "";
+            // Asegurar formato HH:mm eliminando segundos si existen
+            return timeStr.includes(':') ? timeStr.split(':').slice(0, 2).join(':') : timeStr;
+        };
+
+        const normalizedFecha = normalizeDate(state.selectedUnit.date || "");
+        const normalizedHora = normalizeTime(state.selectedUnit.time || "");
+
         const payload = {
+            // CRITERIOS DE BÚSQUEDA (Coincidencia exacta por 5 campos solicitados)
+            id_inspector: state.selectedUnit.inspectorId || "",
+            tipo_proceso: state.selectedUnit.processTypeLabel || "",
+            departamento: state.selectedUnit.number || "",
+            fecha: normalizedFecha,
+            hora: normalizedHora,
+
+            // DATOS DE ACTUALIZACIÓN (Columna L y nuevas)
+            proceso_status: 'REALIZADA',
+            completed_at: new Date().toISOString(),
+            completed_by: state.inspectorEmail || state.inspectorRut || "Unknown",
+
+            // DATOS PARA GENERACIÓN DE ACTA (Compatibilidad con script actual)
             tipo: state.processType === 'PRE_ENTREGA' ? 'PRE ENTREGA' : 'ENTREGA FINAL',
             proyecto: project?.name || "Sin Proyecto",
             depto: state.selectedUnit.number || "",
@@ -340,10 +381,6 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 telefono: state.selectedUnit.ownerPhone || "",
                 email: state.selectedUnit.ownerEmail || ""
             },
-            proceso_status: 'REALIZADA',
-            proceso_completed_at: new Date().toISOString(),
-            proceso_completed_by: state.inspectorEmail || state.inspectorRut || "Unknown",
-            proceso_notes: "",
             observaciones: state.observations.map((o, i) => ({
                 nro: i + 1,
                 recinto: ROOM_NAMES[o.roomId] || "Desconocido",
@@ -351,6 +388,15 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             })),
             firmas: extra?.firmas
         };
+
+        // Logging de criterios para debugging
+        console.log("Iniciando UPDATE de estado en Sheets con criterios:", {
+            inspector: payload.id_inspector,
+            proceso: payload.tipo_proceso,
+            depto: payload.departamento,
+            fecha: payload.fecha,
+            hora: payload.hora
+        });
 
         try {
             const response = await fetch(WEBAPP_URL, {
@@ -360,9 +406,13 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             });
             const data = await response.json();
 
-            // Refrescar datos después de una subida exitosa
             if (data.ok) {
+                // Sincronización inmediata para bloquear la tarjeta
                 await get().fetchData();
+            } else {
+                const errorDetail = `Depto ${payload.departamento}, ${payload.fecha} ${payload.hora}, ${payload.tipo_proceso}`;
+                alert(`No se encontró el agendamiento para actualizar estado (revisar fecha/hora).\n\nCriterios usados:\n${errorDetail}\nInspector: ${payload.id_inspector}`);
+                console.warn("Falla en actualización de fila:", payload);
             }
 
             return data;

@@ -38,14 +38,13 @@ const Dashboard: React.FC = () => {
         bannerSubtitle = 'No tienes procesos programados en los próximos 14 días.';
         sectionTitle = 'Próximas entregas (14 días)';
     } else if (countPre > 0 && countEnt === 0) {
-        bannerSubtitle = `Tienes ${countPre} pre-entrega${countPre > 1 ? 's' : ''} programada${countPre > 1 ? 's' : ''} en los próximos 14 días.`;
+        bannerSubtitle = `Tienes ${countPre} pre-entrega${countPre !== 1 ? 's' : ''} programadas en los próximos 14 días.`;
         sectionTitle = 'Próximas pre-entregas (14 días)';
     } else if (countEnt > 0 && countPre === 0) {
-        bannerSubtitle = `Tienes ${countEnt} entrega${countEnt > 1 ? 's' : ''} programada${countEnt > 1 ? 's' : ''} en los próximos 14 días.`;
+        bannerSubtitle = `Tienes ${countEnt} entrega${countEnt !== 1 ? 's' : ''} programadas en los próximos 14 días.`;
         sectionTitle = 'Próximas entregas (14 días)';
     } else {
-        const breakdown = `(${countPre} pre-entrega${countPre !== 1 ? 's' : ''} / ${countEnt} entrega${countEnt !== 1 ? 's' : ''})`;
-        bannerSubtitle = `Tienes ${countTotal} procesos programados en los próximos 14 días. ${breakdown}`;
+        bannerSubtitle = `Tienes ${countTotal} procesos programados en los próximos 14 días.`;
         sectionTitle = 'Próximos procesos (14 días)';
     }
 
@@ -149,28 +148,37 @@ const Dashboard: React.FC = () => {
                         {upcomingDeliveries.map(unit => {
                             const project = projects.find(p => p.id === unit.projectId);
                             const isGenerated = unit.isHandoverGenerated;
+                            const isEnProceso = unit.procesoStatus === 'EN_PROCESO';
+                            const isRealizada = unit.procesoStatus === 'REALIZADA';
+                            const isCancelada = unit.procesoStatus === 'CANCELADA';
+                            const isFinalized = isRealizada || isCancelada;
 
                             return (
-                                <div key={unit.id} className={`bg-white p-5 rounded-2xl shadow-sm border ${isGenerated ? 'border-green-200 bg-green-50/10' : 'border-slate-200'} flex flex-col hover:shadow-md transition-all`}>
+                                <div key={unit.id} className={`bg-white p-5 rounded-2xl shadow-sm border ${isGenerated ? 'border-green-200 bg-green-50/10' : 'border-slate-200'} flex flex-col hover:shadow-md transition-all ${isFinalized ? 'opacity-60 bg-slate-50/30' : ''}`}>
                                     <div className="flex justify-between items-start mb-3">
                                         <div className="flex flex-col space-y-1">
                                             <span className="inline-flex items-center rounded-lg bg-primary-50 px-2.5 py-1 text-[10px] font-bold text-primary-700 ring-1 ring-inset ring-primary-700/10 uppercase tracking-widest">
                                                 {unit.processTypeLabel || unit.status.replace('_', ' ')}
                                             </span>
                                             {isGenerated && (
-                                                <span className="inline-flex items-center rounded-lg bg-green-100 px-2.5 py-1 text-[10px] font-bold text-green-700 ring-1 ring-inset ring-green-600/10 uppercase tracking-widest">
+                                                <span className="inline-flex items-center rounded-lg bg-green-50 px-2.5 py-1 text-[10px] font-bold text-green-700 ring-1 ring-inset ring-green-600/10 uppercase tracking-widest">
                                                     <CheckCircle size={10} className="mr-1" />
                                                     ACTA GENERADA
                                                 </span>
                                             )}
-                                            {unit.procesoStatus === 'REALIZADA' && !isGenerated && (
-                                                <span className="inline-flex items-center rounded-lg bg-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/10 uppercase tracking-widest">
+                                            {isEnProceso && (
+                                                <span className="inline-flex items-center rounded-lg bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700 ring-1 ring-inset ring-amber-600/10 uppercase tracking-widest">
+                                                    EN PROCESO
+                                                </span>
+                                            )}
+                                            {isRealizada && !isGenerated && (
+                                                <span className="inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-inset ring-slate-400/20 uppercase tracking-widest">
                                                     <CheckCircle size={10} className="mr-1" />
                                                     PROCESO REALIZADO
                                                 </span>
                                             )}
-                                            {unit.procesoStatus === 'CANCELADA' && (
-                                                <span className="inline-flex items-center rounded-lg bg-red-100 px-2.5 py-1 text-[10px] font-bold text-red-700 ring-1 ring-inset ring-red-600/10 uppercase tracking-widest">
+                                            {isCancelada && (
+                                                <span className="inline-flex items-center rounded-lg bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600 ring-1 ring-inset ring-red-600/10 uppercase tracking-widest">
                                                     CANCELADA
                                                 </span>
                                             )}
@@ -220,20 +228,20 @@ const Dashboard: React.FC = () => {
                                                 </div>
                                             )}
                                         </div>
-                                    ) : unit.procesoStatus === 'REALIZADA' || unit.procesoStatus === 'CANCELADA' ? (
+                                    ) : isRealizada || isCancelada ? (
                                         <button
                                             disabled
                                             className="mt-4 w-full bg-slate-100 text-slate-400 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 cursor-not-allowed shadow-none"
                                         >
-                                            <span>{unit.procesoStatus === 'REALIZADA' ? 'Proceso Realizado' : 'Proceso Cancelado'}</span>
-                                            <CheckCircle size={18} />
+                                            <span>{isRealizada ? 'Proceso realizado' : 'Proceso cancelado'}</span>
+                                            {isRealizada && <CheckCircle size={18} />}
                                         </button>
                                     ) : (
                                         <button
                                             onClick={() => handleSelectUnit(unit)}
                                             className="mt-4 w-full bg-primary-600 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 hover:bg-primary-700 transition-colors active:scale-[0.98] shadow-sm"
                                         >
-                                            <span>Iniciar Proceso</span>
+                                            <span>{isEnProceso ? 'Continuar Proceso' : 'Iniciar Proceso'}</span>
                                             <ArrowRight size={18} />
                                         </button>
                                     )}
