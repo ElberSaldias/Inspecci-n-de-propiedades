@@ -13,6 +13,8 @@ const ProcessSelection: React.FC = () => {
     const [email, setEmail] = useState(selectedUnit?.ownerEmail || '');
     const [rut, setRut] = useState(selectedUnit?.ownerRut || '');
 
+    const [validationError, setValidationError] = useState('');
+
     useEffect(() => {
         if (!selectedUnit) {
             navigate('/identify');
@@ -20,6 +22,14 @@ const ProcessSelection: React.FC = () => {
     }, [selectedUnit, navigate]);
 
     const handleSelectProcess = (type: 'PRE_ENTREGA' | 'ENTREGA_FINAL') => {
+        setValidationError('');
+
+        // Validation check
+        if (!rut.trim() || !phone.trim() || !email.trim()) {
+            setValidationError('Por favor, complete todos los datos de contacto (RUT, Teléfono y Correo) antes de seleccionar un proceso.');
+            return;
+        }
+
         // Save the updated info before proceeding
         updateSelectedUnit({
             ownerPhone: phone,
@@ -56,9 +66,13 @@ const ProcessSelection: React.FC = () => {
                         <input
                             type="text"
                             id="rut"
-                            className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900 transition-colors"
+                            className={`block w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900 transition-colors ${validationError && !rut.trim() ? 'border-red-500' : 'border-slate-200'
+                                }`}
                             value={rut}
-                            onChange={(e) => setRut(e.target.value)}
+                            onChange={(e) => {
+                                setRut(e.target.value);
+                                if (validationError) setValidationError('');
+                            }}
                             placeholder="Ej: 12345678-9"
                         />
                     </div>
@@ -69,9 +83,13 @@ const ProcessSelection: React.FC = () => {
                             <input
                                 type="tel"
                                 id="phone"
-                                className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900 transition-colors"
+                                className={`block w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900 transition-colors ${validationError && !phone.trim() ? 'border-red-500' : 'border-slate-200'
+                                    }`}
                                 value={phone}
-                                onChange={(e) => setPhone(e.target.value)}
+                                onChange={(e) => {
+                                    setPhone(e.target.value);
+                                    if (validationError) setValidationError('');
+                                }}
                                 placeholder="+56 9 1234 5678"
                             />
                         </div>
@@ -81,9 +99,13 @@ const ProcessSelection: React.FC = () => {
                             <input
                                 type="email"
                                 id="email"
-                                className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900 transition-colors"
+                                className={`block w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900 transition-colors ${validationError && !email.trim() ? 'border-red-500' : 'border-slate-200'
+                                    }`}
                                 value={email}
-                                onChange={(e) => setEmail(e.target.value)}
+                                onChange={(e) => {
+                                    setEmail(e.target.value);
+                                    if (validationError) setValidationError('');
+                                }}
                                 placeholder="correo@ejemplo.com"
                             />
                         </div>
@@ -96,6 +118,11 @@ const ProcessSelection: React.FC = () => {
                 <p className="text-slate-500">
                     Por favor confirme o actualice sus datos y seleccione qué tipo de recorrido realizaremos hoy.
                 </p>
+                {validationError && (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm font-bold animate-in slide-in-from-top-2">
+                        {validationError}
+                    </div>
+                )}
             </div>
 
             <div className="grid gap-6 sm:grid-cols-2">
