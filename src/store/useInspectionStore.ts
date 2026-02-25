@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import Papa from 'papaparse';
 import type { Observation, ProcessType, Unit, Project } from '../types';
+import { isToday, parse, isValid, parseISO, addDays, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 
 interface InspectionState {
     inspectorRut: string | null;
@@ -27,7 +28,11 @@ interface InspectionState {
     logout: () => void;
     fetchData: () => Promise<void>;
     validateLogin: (input: string) => Promise<boolean>;
-    submitInspection: (extra?: any) => Promise<{ ok: boolean; error?: string; pdf_url?: string }>;
+    submitInspection: (extra?: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; pdf_url?: string }>;
+    getDailyAgenda: () => Unit[];
+    getUpcomingDeliveries: () => Unit[];
+    getProjectsFromAgenda: () => Project[];
+    validateRut: (rut: string) => boolean;
 }
 
 export const useInspectionStore = create<InspectionState>((set, get) => ({
@@ -42,6 +47,24 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     projects: [],
     isLoadingData: false,
     dataError: null,
+
+    // Helper for Chilean RUT validation
+    validateRut: (rut: string) => {
+        const cleanRut = rut.replace(/[^0-9kK]/g, '');
+        if (cleanRut.length < 2) return false;
+        const num = cleanRut.slice(0, -1);
+        const dv = cleanRut.slice(-1).toUpperCase();
+        if (!num || !dv) return false;
+        let sum = 0;
+        let mul = 2;
+        for (let i = num.length - 1; i >= 0; i--) {
+            sum += parseInt(num[i]) * mul;
+            mul = mul === 7 ? 2 : mul + 1;
+        }
+        const res = 11 - (sum % 11);
+        const calculatedDv = res === 11 ? '0' : res === 10 ? 'K' : res.toString();
+        return calculatedDv === dv;
+    },
 
     setInspectorRut: (rut) => set({ inspectorRut: rut }),
 
@@ -233,7 +256,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         }
     },
 
-    submitInspection: async (extra?: any) => {
+    submitInspection: async (extra?: Record<string, any>) => {
         const state = get();
         if (!state.selectedUnit || !state.processType) {
             return { ok: false, error: 'Faltan datos de la unidad o proceso' };
@@ -278,9 +301,147 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             });
             const data = await response.json();
             return data;
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Webhook POST Error:", error);
-            return { ok: false, error: error.message || 'Error de red al intentar contactar a Google Apps Script' };
+            const message = error instanceof Error ? error.message : 'Error de red al intentar contactar a Google Apps Script';
+            return { ok: false, error: message };
         }
+    },
+
+    getDailyAgenda: () => {
+        const state = get();
+        const { units, inspectorEmail, inspectorRut } = state;
+
+        return units.filter(u => {
+            if (u.status === 'ENTREGADO') return false;
+
+            const rowId = (u.inspectorId || '').toLowerCase().trim();
+            const currentEmail = (inspectorEmail || '').toLowerCase().trim();
+            const currentRut = (inspectorRut || '').toLowerCase().replace(/[^0-9k]/g, '');
+            const rowIdAsRut = rowId.replace(/[^0-9k]/g, '');
+
+            let isAssignedToMe = false;
+            if (currentEmail && rowId === currentEmail) isAssignedToMe = true;
+            else if (currentRut && rowIdAsRut === currentRut) isAssignedToMe = true;
+
+            if (!isAssignedToMe) return false;
+
+            // Date check
+            if (!u.date) return false;
+
+            const dateStr = u.date.trim();
+            let parsedDate = parseISO(dateStr);
+
+            if (!isValid(parsedDate)) {
+                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd'];
+                for (const fmt of formats) {
+                    const tempDate = parse(dateStr, fmt, new Date());
+                    if (isValid(tempDate)) {
+                        parsedDate = tempDate;
+                        break;
+                    }
+                }
+            }
+
+            if (!isValid(parsedDate)) return false;
+            return isToday(parsedDate);
+        }).sort((a, b) => {
+            if (!a.time && !b.time) return 0;
+            if (!a.time) return 1;
+            if (!b.time) return -1;
+            const parseTime = (timeStr: string) => {
+                const [hours, minutes] = timeStr.split(':').map(str => parseInt(str.trim(), 10));
+                return (hours || 0) * 60 + (minutes || 0);
+            };
+            return parseTime(a.time) - parseTime(b.time);
+        });
+    },
+
+    getUpcomingDeliveries: () => {
+        const state = get();
+        const { units, inspectorEmail, inspectorRut } = state;
+        const now = new Date();
+        const endDate = addDays(now, 14);
+
+        return units.filter(u => {
+            if (u.status === 'ENTREGADO') return false;
+
+            const rowId = (u.inspectorId || '').toLowerCase().trim();
+            const currentEmail = (inspectorEmail || '').toLowerCase().trim();
+            const currentRut = (inspectorRut || '').toLowerCase().replace(/[^0-9k]/g, '');
+            const rowIdAsRut = rowId.replace(/[^0-9k]/g, '');
+
+            let isAssignedToMe = false;
+            if (currentEmail && rowId === currentEmail) isAssignedToMe = true;
+            else if (currentRut && rowIdAsRut === currentRut) isAssignedToMe = true;
+
+            if (!isAssignedToMe) return false;
+
+            // Date check
+            if (!u.date) return false;
+
+            const dateStr = u.date.trim();
+            let parsedDate = parseISO(dateStr);
+
+            if (!isValid(parsedDate)) {
+                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd'];
+                for (const fmt of formats) {
+                    const tempDate = parse(dateStr, fmt, new Date());
+                    if (isValid(tempDate)) {
+                        parsedDate = tempDate;
+                        break;
+                    }
+                }
+            }
+
+            if (!isValid(parsedDate)) return false;
+
+            return isWithinInterval(parsedDate, {
+                start: startOfDay(now),
+                end: endOfDay(endDate)
+            });
+        }).sort((a, b) => {
+            // Sort by date first
+            const dateStrA = a.date!.trim();
+            const dateStrB = b.date!.trim();
+
+            let parsedA = parseISO(dateStrA);
+            if (!isValid(parsedA)) {
+                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd'];
+                for (const fmt of formats) {
+                    const temp = parse(dateStrA, fmt, new Date());
+                    if (isValid(temp)) { parsedA = temp; break; }
+                }
+            }
+
+            let parsedB = parseISO(dateStrB);
+            if (!isValid(parsedB)) {
+                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd'];
+                for (const fmt of formats) {
+                    const temp = parse(dateStrB, fmt, new Date());
+                    if (isValid(temp)) { parsedB = temp; break; }
+                }
+            }
+
+            const timeDiff = parsedA.getTime() - parsedB.getTime();
+            if (timeDiff !== 0) return timeDiff;
+
+            // Then by time
+            if (!a.time && !b.time) return 0;
+            if (!a.time) return 1;
+            if (!b.time) return -1;
+            const parseTime = (timeStr: string) => {
+                const [hours, minutes] = timeStr.split(':').map(str => parseInt(str.trim(), 10));
+                return (hours || 0) * 60 + (minutes || 0);
+            };
+            return parseTime(a.time) - parseTime(b.time);
+        });
+    },
+
+    getProjectsFromAgenda: () => {
+        const state = get();
+        const agenda = state.getDailyAgenda();
+        const projectIds = Array.from(new Set(agenda.map(u => u.projectId)));
+        return state.projects.filter(p => projectIds.includes(p.id));
     }
 }));
