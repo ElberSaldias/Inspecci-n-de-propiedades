@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import Papa from 'papaparse';
 import type { Observation, ProcessType, Unit, Project } from '../types';
-import { isToday, parse, isValid, parseISO, addDays, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { isToday, parse, isValid, parseISO, addDays, isWithinInterval, startOfDay, endOfDay, format } from 'date-fns';
 
 interface InspectionState {
     inspectorRut: string | null;
@@ -237,6 +237,34 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                         });
                     });
 
+                    // Add some extra mock deliveries if the agenda is sparse for testing
+                    if (parsedUnits.length < 4) {
+                        const now = new Date();
+                        const mockNames = ['Javier Pérez', 'Claudia Soto', 'Andrés Vicuña', 'Marta Lagos'];
+                        const mockDeptos = ['202', '305', '410', '101'];
+
+                        mockNames.forEach((name, i) => {
+                            const date = addDays(now, i + 1);
+                            const dateStr = format(date, 'yyyy-MM-dd');
+                            const projectId = parsedProjects[0]?.id || 'proj-test';
+
+                            parsedUnits.push({
+                                id: `mock-unit-${i}`,
+                                projectId: projectId,
+                                number: mockDeptos[i],
+                                ownerName: name,
+                                ownerRut: '12.345.678-9',
+                                status: 'PENDING',
+                                inspectorId: get().inspectorEmail || get().inspectorRut || '',
+                                processTypeLabel: i % 2 === 0 ? 'PRE ENTREGA' : 'ENTREGA',
+                                date: dateStr,
+                                time: '10:00',
+                                projectAddress: parsedProjects[0]?.address || 'Calle Test 123',
+                                activeState: 'PROGRAMADO'
+                            });
+                        });
+                    }
+
                     // Mock handover status for some units (e.g., every 5th unit)
                     const enhancedUnits = parsedUnits.map((u, index) => ({
                         ...u,
@@ -264,7 +292,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         }
     },
 
-    submitInspection: async (extra?: Record<string, any>) => {
+    submitInspection: async (extra?: Record<string, unknown>) => {
         const state = get();
         if (!state.selectedUnit || !state.processType) {
             return { ok: false, error: 'Faltan datos de la unidad o proceso' };

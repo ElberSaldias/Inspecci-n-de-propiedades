@@ -15,10 +15,16 @@ const ProcessSelection: React.FC = () => {
     const project = projects.find(p => p.id === selectedUnit?.projectId);
 
     const [name, setName] = useState(selectedUnit?.ownerName || '');
-    const [phone, setPhone] = useState(selectedUnit?.ownerPhone || '');
     const [email, setEmail] = useState(selectedUnit?.ownerEmail || '');
     const [rut, setRut] = useState(selectedUnit?.ownerRut || '');
 
+    // Phone logic: Split prefix and 8-digit suffix
+    const initialPhone = selectedUnit?.ownerPhone || '';
+    const initialSuffix = initialPhone.startsWith('+569')
+        ? initialPhone.substring(4)
+        : initialPhone.replace(/\D/g, '').slice(-8);
+
+    const [phoneSuffix, setPhoneSuffix] = useState(initialSuffix);
     const [validationError, setValidationError] = useState('');
 
     useEffect(() => {
@@ -37,7 +43,7 @@ const ProcessSelection: React.FC = () => {
         setValidationError('');
 
         // 1. Mandatory Fields
-        if (!name.trim() || !rut.trim() || !phone.trim() || !email.trim()) {
+        if (!name.trim() || !rut.trim() || !phoneSuffix.trim() || !email.trim()) {
             setValidationError('Por favor, complete todos los campos obligatorios.');
             return;
         }
@@ -48,10 +54,9 @@ const ProcessSelection: React.FC = () => {
             return;
         }
 
-        // 3. Phone Validation (Basic check for +56 9 ...)
-        const cleanPhone = phone.replace(/\s/g, '');
-        if (!cleanPhone.startsWith('+569') || cleanPhone.length !== 12) {
-            setValidationError('El teléfono debe tener el formato +56 9 XXXX XXXX (12 caracteres).');
+        // 3. Phone Validation (Exactly 8 digits)
+        if (phoneSuffix.length !== 8) {
+            setValidationError('El número debe contener 8 dígitos.');
             return;
         }
 
@@ -69,10 +74,10 @@ const ProcessSelection: React.FC = () => {
             type = 'ENTREGA_FINAL';
         }
 
-        // Save everything
+        // Save everything with full phone format
         updateSelectedUnit({
             ownerName: name,
-            ownerPhone: phone,
+            ownerPhone: `+569${phoneSuffix}`,
             ownerEmail: email,
             ownerRut: rut
         });
@@ -143,13 +148,22 @@ const ProcessSelection: React.FC = () => {
                     <div className="grid gap-5 sm:grid-cols-2">
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Teléfono</label>
-                            <input
-                                type="tel"
-                                className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
-                                placeholder="+56 9 XXXX XXXX"
-                                value={phone}
-                                onChange={(e) => setPhone(e.target.value)}
-                            />
+                            <div className={`flex shadow-sm rounded-xl overflow-hidden border ${validationError.includes('número') ? 'border-red-300 ring-1 ring-red-300' : 'border-slate-200'} focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500`}>
+                                <div className="bg-slate-50 px-3 py-3 text-slate-500 font-black border-r border-slate-200 flex items-center text-sm select-none">
+                                    +56 9
+                                </div>
+                                <input
+                                    type="tel"
+                                    className="block w-full px-4 py-3 bg-white text-slate-900 font-medium outline-none placeholder:text-slate-300"
+                                    placeholder="1234 5678"
+                                    maxLength={8}
+                                    value={phoneSuffix}
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/\D/g, '');
+                                        if (val.length <= 8) setPhoneSuffix(val);
+                                    }}
+                                />
+                            </div>
                         </div>
 
                         <div>
@@ -184,7 +198,7 @@ const ProcessSelection: React.FC = () => {
                     onClick={handleConfirm}
                     className="flex-[2] bg-primary-600 text-white font-bold py-4 px-8 rounded-2xl shadow-lg hover:bg-primary-700 transition-all active:scale-[0.98] flex items-center justify-center space-x-2"
                 >
-                    <span>Confirmar y continuar</span>
+                    <span>Confirmar e iniciar inspección</span>
                     <ArrowRight size={20} />
                 </button>
             </div>
