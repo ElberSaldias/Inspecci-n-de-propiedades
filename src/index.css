@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-500: #3b82f6; /* Blue accent */
+  --color-primary-600: #2563eb;
+  --color-success-500: #22c55e; /* Green accent */
+  --color-success-600: #16a34a;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 font-sans;
+  -webkit-tap-highlight-color: transparent;
+}

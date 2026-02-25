@@ -1,0 +1,286 @@
+import { create } from 'zustand';
+import Papa from 'papaparse';
+import type { Observation, ProcessType, Unit, Project } from '../types';
+
+interface InspectionState {
+    inspectorRut: string | null;
+    inspectorName: string | null;
+    inspectorEmail: string | null;
+    inspectorRole: string | null;
+    selectedUnit: Unit | null;
+    processType: ProcessType | null;
+    observations: Observation[];
+    units: Unit[];
+    projects: Project[];
+    isLoadingData: boolean;
+    dataError: string | null;
+
+    // Actions
+    setInspectorRut: (rut: string | null) => void;
+    setSelectedUnit: (unit: Unit | null) => void;
+    updateSelectedUnit: (updates: Partial<Unit>) => void;
+    setProcessType: (type: ProcessType | null) => void;
+    addObservation: (observation: Omit<Observation, 'id'>) => void;
+    removeObservation: (id: string) => void;
+    updateObservationStatus: (id: string, status: Observation['status']) => void;
+    clearSession: () => void;
+    logout: () => void;
+    fetchData: () => Promise<void>;
+    validateLogin: (input: string) => Promise<boolean>;
+    submitInspection: (extra?: any) => Promise<{ ok: boolean; error?: string; pdf_url?: string }>;
+}
+
+export const useInspectionStore = create<InspectionState>((set, get) => ({
+    inspectorRut: null,
+    inspectorName: null,
+    inspectorEmail: null,
+    inspectorRole: null,
+    selectedUnit: null,
+    processType: null,
+    observations: [],
+    units: [],
+    projects: [],
+    isLoadingData: false,
+    dataError: null,
+
+    setInspectorRut: (rut) => set({ inspectorRut: rut }),
+
+    setSelectedUnit: (unit) => set({ selectedUnit: unit }),
+
+    updateSelectedUnit: (updates) => set((state) => ({
+        selectedUnit: state.selectedUnit ? { ...state.selectedUnit, ...updates } : null
+    })),
+
+    setProcessType: (type) => set({ processType: type }),
+
+    addObservation: (obs) => set((state) => ({
+        observations: [
+            ...state.observations,
+            { ...obs, id: Math.random().toString(36).substr(2, 9) }
+        ]
+    })),
+
+    removeObservation: (id) => set((state) => ({
+        observations: state.observations.filter(o => o.id !== id)
+    })),
+
+    updateObservationStatus: (id, status) => set((state) => ({
+        observations: state.observations.map(o =>
+            o.id === id ? { ...o, status } : o
+        )
+    })),
+
+    clearSession: () => set({
+        selectedUnit: null,
+        processType: null,
+        observations: []
+    }),
+
+    logout: () => set({
+        inspectorRut: null,
+        inspectorName: null,
+        inspectorEmail: null,
+        inspectorRole: null,
+        selectedUnit: null,
+        processType: null,
+        observations: [],
+        units: [],
+        projects: []
+    }),
+
+    validateLogin: async (input: string) => {
+        try {
+            // Se agrega un timestamp (t=...) para evadir cache del navegador
+            const response = await fetch(`https://docs.google.com/spreadsheets/d/e/2PACX-1vQ9LrYOr-j7mtY4F51Aw2CtGvP_l1dMW5-sZGLQvyUGQ1lmVxyj9Hxe3z40QeVy5j7VkAsmbLUzSaDV/pub?output=csv&t=${Date.now()}`, { cache: "no-store" });
+            const csvText = await response.text();
+            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+
+            const currentStr = input.trim().toLowerCase();
+            const isEmailLogin = currentStr.includes('@');
+            const normalizedRut = currentStr.replace(/[^0-9k]/g, '');
+
+            let matchedUser = null;
+            let realName = 'Usuario';
+            let realEmail = '';
+            let realRole = 'Inspector';
+
+            for (const user of parsed.data as Record<string, string>[]) {
+                // Buscamos las columnas flexibilizando espacios o capitalización
+                const keys = Object.keys(user);
+                const emailKey = keys.find(k => k.toLowerCase().includes('email')) || 'Email';
+                const rutKey = keys.find(k => k.toLowerCase().includes('rut') || k.toLowerCase().includes('id')) || 'RUT / ID';
+                const nameKey = keys.find(k => k.toLowerCase().includes('nombre') || k.toLowerCase().includes('completo')) || 'Nombre Completo';
+                const roleKey = keys.find(k => k.toLowerCase().includes('rol')) || 'Rol';
+
+                const uEmail = (user[emailKey] || '').trim().toLowerCase();
+                const uRut = (user[rutKey] || '').toLowerCase().replace(/[^0-9k]/g, '');
+
+                if ((isEmailLogin && uEmail === currentStr) || (!isEmailLogin && uRut === normalizedRut)) {
+                    matchedUser = user;
+                    realName = user[nameKey] || 'Usuario';
+                    realEmail = user[emailKey] || '';
+                    realRole = user[roleKey] || 'Inspector';
+                    break;
+                }
+            }
+
+            if (matchedUser) {
+                set({
+                    inspectorRut: input.trim().toUpperCase(),
+                    inspectorName: realName,
+                    inspectorEmail: realEmail.trim().toLowerCase(),
+                    inspectorRole: realRole
+                });
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error("Login validation error:", error);
+            return false;
+        }
+    },
+
+    fetchData: async () => {
+        set({ isLoadingData: true, dataError: null });
+        try {
+            // Cache buster para refrescar siempre los nuevos departamentos
+            const response = await fetch(`https://docs.google.com/spreadsheets/d/e/2PACX-1vSjo8-wZ72MSUQcaKuooUzuxk1Uj8FTV1DeMEy24z5pqIDblK2GfCOAT3E2S3aQBnbOmoe6VbBt-Qey/pub?output=csv&t=${Date.now()}`, { cache: "no-store" });
+            const unitsCsvText = await response.text();
+
+            interface CsvRow {
+                id_inspector?: string;
+                tipo_proceso?: string;
+                departamento?: string;
+                estacionamiento?: string;
+                bodega?: string;
+                edificio?: string;
+                direccion?: string;
+                cliente?: string;
+                estado?: string;
+                fecha?: string;
+                hora?: string;
+            }
+
+            Papa.parse(unitsCsvText, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    const parsedUnits: Unit[] = [];
+                    const parsedProjects: Project[] = [];
+                    const projectMap = new Map<string, Project>();
+
+                    (results.data as CsvRow[]).forEach((row) => {
+                        // Extract project
+                        const projectName = row.edificio || 'Sin Edificio';
+                        const projectAddress = row.direccion || '';
+                        // Basic ID generation logic based on name
+                        const projectId = `proj-${projectName.replace(/\s+/g, '-').toLowerCase()}`;
+
+                        if (!projectMap.has(projectId)) {
+                            const newProject: Project = {
+                                id: projectId,
+                                name: projectName,
+                                address: projectAddress,
+                                status: 'ACTIVE'
+                            };
+                            projectMap.set(projectId, newProject);
+                            parsedProjects.push(newProject);
+                        }
+
+                        // Determine status
+                        let status: Unit['status'] = 'PENDING';
+                        if (row.tipo_proceso === 'PRE ENTREGA') status = 'PRE_ENTREGA';
+                        else if (row.tipo_proceso === 'ENTREGADO') status = 'ENTREGADO';
+
+                        // Create unit
+                        const unitId = `unit-${projectId}-${row.departamento}`;
+                        parsedUnits.push({
+                            id: unitId,
+                            projectId: projectId,
+                            number: row.departamento || '',
+                            ownerName: row.cliente || '',
+                            ownerRut: '', // Not provided directly in CSV
+                            status: status,
+
+                            // CSV-specific mapping
+                            inspectorId: row.id_inspector || '',
+                            processTypeLabel: row.tipo_proceso || '',
+                            parking: row.estacionamiento || '',
+                            storage: row.bodega || '',
+                            projectAddress: projectAddress,
+                            activeState: row.estado || '',
+                            date: row.fecha || '',
+                            time: row.hora || ''
+                        });
+                    });
+
+                    set({
+                        units: parsedUnits,
+                        projects: parsedProjects,
+                        isLoadingData: false
+                    });
+                },
+                error: (error: Error) => {
+                    set({ dataError: error.message, isLoadingData: false });
+                }
+            });
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                set({ dataError: error.message || 'Error fetching data', isLoadingData: false });
+            } else {
+                set({ dataError: 'Error fetching data', isLoadingData: false });
+            }
+        }
+    },
+
+    submitInspection: async (extra?: any) => {
+        const state = get();
+        if (!state.selectedUnit || !state.processType) {
+            return { ok: false, error: 'Faltan datos de la unidad o proceso' };
+        }
+
+        const project = state.projects.find(p => p.id === state.selectedUnit?.projectId);
+        const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyuuCHHUBE_zcRi1qqZQ-ERkXEnqctDOo4muW2U7hDbL0dYl4qMovrD_XbvnddwoUkEfA/exec";
+
+        // Mapeo de recintos
+        const ROOM_NAMES: Record<string, string> = {
+            'r1': 'Acceso', 'r2': 'Cocina', 'r3': 'Estar Comedor', 'r4': 'Pasillo',
+            'r5': 'Dormitorio 1', 'r6': 'Dormitorio 2', 'r7': 'Baño 1', 'r8': 'Baño 2',
+            'r9': 'Terraza', 'r10': 'Bodega', 'r11': 'Estacionamiento'
+        };
+
+        const payload = {
+            tipo: state.processType === 'PRE_ENTREGA' ? 'PRE ENTREGA' : 'ENTREGA FINAL',
+            proyecto: project?.name || "Sin Proyecto",
+            depto: state.selectedUnit.number || "",
+            fecha_acta: new Date().toISOString().split("T")[0],
+            edificio_direccion: project?.address || state.selectedUnit.projectAddress || "",
+            comuna: "Santiago", // Valor por defecto ya que no está en el modelo
+            propietario: {
+                nombre: state.selectedUnit.ownerName || "",
+                rut: state.selectedUnit.ownerRut || "",
+                telefono: state.selectedUnit.ownerPhone || "",
+                email: state.selectedUnit.ownerEmail || ""
+            },
+            observaciones: state.observations.map((o, i) => ({
+                nro: i + 1,
+                recinto: ROOM_NAMES[o.roomId] || "Desconocido",
+                detalle: o.description
+            })),
+            firmas: extra?.firmas
+        };
+
+        try {
+            const response = await fetch(WEBAPP_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            return data;
+        } catch (error: any) {
+            console.error("Webhook POST Error:", error);
+            return { ok: false, error: error.message || 'Error de red al intentar contactar a Google Apps Script' };
+        }
+    }
+}));
