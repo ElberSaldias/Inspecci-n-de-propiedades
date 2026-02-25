@@ -12,6 +12,7 @@ const Dashboard: React.FC = () => {
     const inspectorRut = useInspectionStore((state) => state.inspectorRut);
     const inspectorName = useInspectionStore((state) => state.inspectorName);
     const projects = useInspectionStore((state) => state.projects);
+    const units = useInspectionStore((state) => state.units);
     const isLoadingData = useInspectionStore((state) => state.isLoadingData);
     const dataError = useInspectionStore((state) => state.dataError);
 
@@ -126,6 +127,15 @@ const Dashboard: React.FC = () => {
                     <ClipboardCheck size={200} />
                 </div>
             </div>
+
+            {/* Debug Mode Info (Only in Dev) */}
+            {import.meta.env.DEV && (
+                <div className="bg-slate-800 text-slate-300 p-3 rounded-xl text-[10px] font-mono flex flex-wrap gap-x-4 gap-y-1">
+                    <span>Filtrando por: {inspectorEmail}</span>
+                    <span>Total filas: {units.length}</span>
+                    <span>Filtradas (14d): {upcomingDeliveries.length}</span>
+                </div>
+            )}
 
             <div className="space-y-4">
                 <h2 className="text-lg font-bold text-slate-800 flex items-center">

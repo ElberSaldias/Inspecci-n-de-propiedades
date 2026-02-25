@@ -254,46 +254,6 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                         });
                     });
 
-                    // Add some extra mock deliveries ONLY if we have almost no real data for the current inspector
-                    const myInspectorId = (get().inspectorEmail || get().inspectorRut || '').toLowerCase().trim();
-                    const myUnits = parsedUnits.filter(u => (u.inspectorId || '').toLowerCase().trim() === myInspectorId);
-
-                    if (myUnits.length < 2) {
-                        const now = new Date();
-                        const mockData = [
-                            { name: 'Javier Pérez', depto: '202', type: 'PRE ENTREGA', dayOffset: 1, acta: false, procStatus: 'PROGRAMADA' },
-                            { name: 'Sofía Castro', depto: '105', type: 'PRE ENTREGA', dayOffset: 0, acta: false, procStatus: 'EN_PROCESO' },
-                            { name: 'Claudia Soto', depto: '305', type: 'ENTREGA', dayOffset: 2, acta: true, procStatus: 'REALIZADA' },
-                            { name: 'Andrés Vicuña', depto: '410', type: 'PRE ENTREGA', dayOffset: 14, acta: false, procStatus: 'PROGRAMADA' },
-                            { name: 'Pedro Marmol', depto: '505', type: 'ENTREGA', dayOffset: -1, acta: false, procStatus: 'CANCELADA' },
-                        ];
-
-                        mockData.forEach((item, i) => {
-                            const date = addDays(now, item.dayOffset);
-                            const dateStr = format(date, 'yyyy-MM-dd');
-                            const projectId = parsedProjects[0]?.id || 'proj-test';
-
-                            parsedUnits.push({
-                                id: `mock-unit-${i}`,
-                                projectId: projectId,
-                                number: item.depto,
-                                ownerName: item.name,
-                                ownerRut: '12.345.678-9',
-                                status: 'PENDING',
-                                inspectorId: myInspectorId,
-                                processTypeLabel: item.type,
-                                date: dateStr,
-                                time: '10:00',
-                                projectAddress: 'Mock Address 123',
-                                activeState: 'Activo',
-                                isHandoverGenerated: item.acta,
-                                handoverUrl: item.acta ? 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' : undefined,
-                                handoverDate: item.acta ? dateStr : undefined,
-                                procesoStatus: item.procStatus as Unit['procesoStatus']
-                            });
-                        });
-                    }
-
                     set({
                         units: parsedUnits,
                         projects: parsedProjects,
@@ -425,49 +385,48 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
 
     getDailyAgenda: () => {
         const state = get();
-        const { units, inspectorEmail, inspectorRut } = state;
+        const { units, inspectorEmail } = state;
+
+        if (!inspectorEmail) return [];
 
         return units.filter(u => {
-            // Case insensitive check for "Activo"
+            // 1. Exact match by email
+            const rowId = (u.inspectorId || '').toLowerCase().trim();
+            const currentEmail = inspectorEmail.toLowerCase().trim();
+            if (rowId !== currentEmail) return false;
+
+            // 2. Active state
             if ((u.activeState || '').toLowerCase() !== 'activo') return false;
 
-            const rowId = (u.inspectorId || '').toLowerCase().trim();
-            const currentEmail = (inspectorEmail || '').toLowerCase().trim();
-            const currentRut = (inspectorRut || '').toLowerCase().replace(/[^0-9k]/g, '');
-            const rowIdAsRut = rowId.replace(/[^0-9k]/g, '');
-
-            let isAssignedToMe = false;
-            if (currentEmail && rowId === currentEmail) isAssignedToMe = true;
-            else if (currentRut && rowIdAsRut === currentRut) isAssignedToMe = true;
-
-            if (!isAssignedToMe) return false;
-
-            // Date check
+            // 3. Today's date check (Manual parsing dd-mm-yyyy)
             if (!u.date) return false;
-
             const dateStr = u.date.trim();
-            let parsedDate = parseISO(dateStr);
+            const parts = dateStr.split(/[-/]/);
+            if (parts.length !== 3) return false;
 
-            if (!isValid(parsedDate)) {
-                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd', 'yyyy-MM-dd'];
-                for (const fmt of formats) {
-                    const tempDate = parse(dateStr, fmt, new Date());
-                    if (isValid(tempDate)) {
-                        parsedDate = tempDate;
-                        break;
-                    }
-                }
-            }
+            // Assuming dd-mm-yyyy or similar
+            let d, m, y;
+            if (parts[2].length === 4) { // dd-mm-yyyy
+                d = parseInt(parts[0], 10);
+                m = parseInt(parts[1], 10) - 1;
+                y = parseInt(parts[2], 10);
+            } else if (parts[0].length === 4) { // yyyy-mm-dd
+                y = parseInt(parts[0], 10);
+                m = parseInt(parts[1], 10) - 1;
+                d = parseInt(parts[2], 10);
+            } else return false;
 
+            const parsedDate = new Date(y, m, d);
             if (!isValid(parsedDate)) return false;
+
             return isToday(parsedDate);
         }).sort((a, b) => {
             if (!a.time && !b.time) return 0;
             if (!a.time) return 1;
             if (!b.time) return -1;
             const parseTime = (timeStr: string) => {
-                const [hours, minutes] = timeStr.split(':').map(str => parseInt(str.trim(), 10));
-                return (hours || 0) * 60 + (minutes || 0);
+                const parts = timeStr.split(':').map(str => parseInt(str.trim(), 10));
+                return (parts[0] || 0) * 60 + (parts[1] || 0);
             };
             return parseTime(a.time) - parseTime(b.time);
         });
@@ -475,83 +434,55 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
 
     getUpcomingDeliveries: () => {
         const state = get();
-        const { units, inspectorEmail, inspectorRut } = state;
+        const { units, inspectorEmail } = state;
+        if (!inspectorEmail) return [];
+
         const now = startOfDay(new Date());
         const endDate = endOfDay(addDays(now, 14));
 
         return units.filter(u => {
-            // Case insensitive check for "Activo"
+            // 1. Exact match by email
+            const rowId = (u.inspectorId || '').toLowerCase().trim();
+            const currentEmail = inspectorEmail.toLowerCase().trim();
+            if (rowId !== currentEmail) return false;
+
+            // 2. Active state
             if ((u.activeState || '').toLowerCase() !== 'activo') return false;
 
-            const rowId = (u.inspectorId || '').toLowerCase().trim();
-            const currentEmail = (inspectorEmail || '').toLowerCase().trim();
-            const currentRut = (inspectorRut || '').toLowerCase().replace(/[^0-9k]/g, '');
-            const rowIdAsRut = rowId.replace(/[^0-9k]/g, '');
-
-            let isAssignedToMe = false;
-            if (currentEmail && rowId === currentEmail) isAssignedToMe = true;
-            else if (currentRut && rowIdAsRut === currentRut) isAssignedToMe = true;
-
-            if (!isAssignedToMe) return false;
-
-            // Date check
+            // 3. Date check (Manual parsing dd-mm-yyyy)
             if (!u.date) return false;
-
             const dateStr = u.date.trim();
-            let parsedDate = parseISO(dateStr);
+            const parts = dateStr.split(/[-/]/);
+            if (parts.length !== 3) return false;
 
-            if (!isValid(parsedDate)) {
-                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd', 'yyyy-MM-dd'];
-                for (const fmt of formats) {
-                    const tempDate = parse(dateStr, fmt, new Date());
-                    if (isValid(tempDate)) {
-                        parsedDate = tempDate;
-                        break;
-                    }
-                }
-            }
+            let d, m, y;
+            if (parts[2].length === 4) { // dd-mm-yyyy
+                d = parseInt(parts[0], 10);
+                m = parseInt(parts[1], 10) - 1;
+                y = parseInt(parts[2], 10);
+            } else if (parts[0].length === 4) { // yyyy-mm-dd
+                y = parseInt(parts[0], 10);
+                m = parseInt(parts[1], 10) - 1;
+                d = parseInt(parts[2], 10);
+            } else return false;
 
+            const parsedDate = new Date(y, m, d);
             if (!isValid(parsedDate)) return false;
 
-            return isWithinInterval(parsedDate, {
-                start: now,
-                end: endDate
-            });
+            return isWithinInterval(parsedDate, { start: now, end: endDate });
         }).sort((a, b) => {
-            // Sort by date first
-            const dateStrA = a.date!.trim();
-            const dateStrB = b.date!.trim();
-
-            let parsedA = parseISO(dateStrA);
-            if (!isValid(parsedA)) {
-                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd'];
-                for (const fmt of formats) {
-                    const temp = parse(dateStrA, fmt, new Date());
-                    if (isValid(temp)) { parsedA = temp; break; }
+            // Sort by Date then Time
+            const parseFullDate = (u: Unit) => {
+                const parts = (u.date || '').trim().split(/[-/]/);
+                let d = 1, m = 0, y = 2000;
+                if (parts.length === 3) {
+                    if (parts[2].length === 4) { d = parseInt(parts[0], 10); m = parseInt(parts[1], 10) - 1; y = parseInt(parts[2], 10); }
+                    else if (parts[0].length === 4) { y = parseInt(parts[0], 10); m = parseInt(parts[1], 10) - 1; d = parseInt(parts[2], 10); }
                 }
-            }
-
-            let parsedB = parseISO(dateStrB);
-            if (!isValid(parsedB)) {
-                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd'];
-                for (const fmt of formats) {
-                    const temp = parse(dateStrB, fmt, new Date());
-                    if (isValid(temp)) { parsedB = temp; break; }
-                }
-            }
-
-            const timeDiff = parsedA.getTime() - parsedB.getTime();
-            if (timeDiff !== 0) return timeDiff;
-
-            // Then by time
-            if (!a.time && !b.time) return 0;
-            if (!a.time) return 1;
-            if (!b.time) return -1;
-            const parseTime = (timeStr: string) => {
-                const [hours, minutes] = timeStr.split(':').map(str => parseInt(str.trim(), 10));
-                return (hours || 0) * 60 + (minutes || 0);
+                const timeParts = (u.time || '00:00').split(':').map(s => parseInt(s, 10));
+                return new Date(y, m, d, timeParts[0] || 0, timeParts[1] || 0).getTime();
             };
-            return parseTime(a.time) - parseTime(b.time);
+            return parseFullDate(a) - parseFullDate(b);
         });
     },
 
