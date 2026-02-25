@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInspectionStore } from '../store/useInspectionStore';
 import type { Unit, ProcessType } from '../types';
-import { Calendar, Clock, ChevronRight, MapPin, User, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, ChevronRight, MapPin, User, CheckCircle, AlertCircle } from 'lucide-react';
 
 const IdentifyUnit: React.FC = () => {
     const navigate = useNavigate();
@@ -62,13 +62,16 @@ const IdentifyUnit: React.FC = () => {
                         {upcomingDeliveries.map(unit => {
                             const project = getProjectForUnit(unit);
                             const isGenerated = unit.isHandoverGenerated;
+                            const isRealizada = unit.procesoStatus === 'REALIZADA';
+                            const isCancelada = unit.procesoStatus === 'CANCELADA';
+                            const isBlocked = isGenerated || isRealizada || isCancelada;
 
                             return (
                                 <button
                                     key={unit.id}
                                     onClick={() => handleSelectUnit(unit)}
-                                    disabled={isGenerated}
-                                    className={`bg-white p-6 rounded-3xl shadow-sm border-2 ${isGenerated ? 'border-green-100 opacity-80 cursor-not-allowed' : 'border-slate-100 hover:border-primary-500 hover:shadow-lg active:scale-[0.98]'} flex flex-col items-start text-left transition-all group relative overflow-hidden`}
+                                    disabled={isBlocked}
+                                    className={`bg-white p-6 rounded-3xl shadow-sm border-2 ${isBlocked ? 'border-slate-50 opacity-90 cursor-not-allowed bg-slate-50/10' : 'border-slate-100 hover:border-primary-500 hover:shadow-lg active:scale-[0.98]'} flex flex-col items-start text-left transition-all group relative overflow-hidden`}
                                 >
                                     <div className="flex justify-between w-full mb-3">
                                         <div className="flex flex-col space-y-1">
@@ -78,6 +81,16 @@ const IdentifyUnit: React.FC = () => {
                                             {isGenerated && (
                                                 <span className="inline-flex items-center rounded-lg bg-green-100 px-3 py-1 text-[10px] font-bold text-green-700 uppercase tracking-widest">
                                                     ACTA GENERADA
+                                                </span>
+                                            )}
+                                            {isRealizada && !isGenerated && (
+                                                <span className="inline-flex items-center rounded-lg bg-blue-100 px-3 py-1 text-[10px] font-bold text-blue-700 uppercase tracking-widest">
+                                                    PROCESO REALIZADO
+                                                </span>
+                                            )}
+                                            {isCancelada && (
+                                                <span className="inline-flex items-center rounded-lg bg-red-100 px-3 py-1 text-[10px] font-bold text-red-700 uppercase tracking-widest">
+                                                    CANCELADA
                                                 </span>
                                             )}
                                         </div>
@@ -105,7 +118,7 @@ const IdentifyUnit: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    {!isGenerated && (
+                                    {!isBlocked && (
                                         <div className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-200 group-hover:text-primary-500 transition-colors">
                                             <ChevronRight size={32} />
                                         </div>
@@ -114,6 +127,18 @@ const IdentifyUnit: React.FC = () => {
                                     {isGenerated && (
                                         <div className="absolute top-1/2 right-4 -translate-y-1/2 text-green-200">
                                             <CheckCircle size={32} />
+                                        </div>
+                                    )}
+
+                                    {isRealizada && !isGenerated && (
+                                        <div className="absolute top-1/2 right-4 -translate-y-1/2 text-blue-200">
+                                            <CheckCircle size={32} />
+                                        </div>
+                                    )}
+
+                                    {isCancelada && (
+                                        <div className="absolute top-1/2 right-4 -translate-y-1/2 text-red-200">
+                                            <AlertCircle size={32} />
                                         </div>
                                     )}
                                 </button>

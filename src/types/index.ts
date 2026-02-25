@@ -34,6 +34,12 @@ export interface Unit {
     isHandoverGenerated?: boolean;
     handoverUrl?: string;
     handoverDate?: string;
+
+    // Process status fields
+    procesoStatus?: 'PROGRAMADA' | 'EN_PROCESO' | 'REALIZADA' | 'CANCELADA' | '';
+    procesoCompletedAt?: string;
+    procesoCompletedBy?: string;
+    procesoNotes?: string;
 }
 
 export interface Room {

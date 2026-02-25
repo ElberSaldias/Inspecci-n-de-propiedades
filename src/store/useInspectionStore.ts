@@ -186,6 +186,10 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 acta_url?: string;
                 acta_id?: string;
                 acta_updated_at?: string;
+                proceso_status?: string;
+                proceso_completed_at?: string;
+                proceso_completed_by?: string;
+                proceso_notes?: string;
             }
 
             Papa.parse(unitsCsvText, {
@@ -240,7 +244,12 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                             time: row.hora || '',
                             isHandoverGenerated: (row.acta_status || '').toUpperCase() === 'GENERADA',
                             handoverUrl: row.acta_url || undefined,
-                            handoverDate: row.acta_updated_at || undefined
+                            handoverDate: row.acta_updated_at || undefined,
+
+                            procesoStatus: (row.proceso_status || '') as Unit['procesoStatus'],
+                            procesoCompletedAt: row.proceso_completed_at,
+                            procesoCompletedBy: row.proceso_completed_by,
+                            procesoNotes: row.proceso_notes
                         });
                     });
 
@@ -251,9 +260,10 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                     if (myUnits.length < 2) {
                         const now = new Date();
                         const mockData = [
-                            { name: 'Javier Pérez', depto: '202', type: 'PRE ENTREGA', dayOffset: 1, acta: false },
-                            { name: 'Claudia Soto', depto: '305', type: 'ENTREGA', dayOffset: 2, acta: true },
-                            { name: 'Andrés Vicuña', depto: '410', type: 'PRE ENTREGA', dayOffset: 14, acta: false },
+                            { name: 'Javier Pérez', depto: '202', type: 'PRE ENTREGA', dayOffset: 1, acta: false, procStatus: 'PROGRAMADA' },
+                            { name: 'Claudia Soto', depto: '305', type: 'ENTREGA', dayOffset: 2, acta: true, procStatus: 'REALIZADA' },
+                            { name: 'Andrés Vicuña', depto: '410', type: 'PRE ENTREGA', dayOffset: 14, acta: false, procStatus: 'PROGRAMADA' },
+                            { name: 'Pedro Marmol', depto: '505', type: 'ENTREGA', dayOffset: 0, acta: false, procStatus: 'REALIZADA' },
                         ];
 
                         mockData.forEach((item, i) => {
@@ -276,7 +286,8 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                                 activeState: 'Activo',
                                 isHandoverGenerated: item.acta,
                                 handoverUrl: item.acta ? 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' : undefined,
-                                handoverDate: item.acta ? dateStr : undefined
+                                handoverDate: item.acta ? dateStr : undefined,
+                                procesoStatus: item.procStatus as Unit['procesoStatus']
                             });
                         });
                     }
@@ -322,13 +333,17 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             depto: state.selectedUnit.number || "",
             fecha_acta: new Date().toISOString().split("T")[0],
             edificio_direccion: project?.address || state.selectedUnit.projectAddress || "",
-            comuna: "Santiago", // Valor por defecto ya que no está en el modelo
+            comuna: "Santiago",
             propietario: {
                 nombre: state.selectedUnit.ownerName || "",
                 rut: state.selectedUnit.ownerRut || "",
                 telefono: state.selectedUnit.ownerPhone || "",
                 email: state.selectedUnit.ownerEmail || ""
             },
+            proceso_status: 'REALIZADA',
+            proceso_completed_at: new Date().toISOString(),
+            proceso_completed_by: state.inspectorEmail || state.inspectorRut || "Unknown",
+            proceso_notes: "",
             observaciones: state.observations.map((o, i) => ({
                 nro: i + 1,
                 recinto: ROOM_NAMES[o.roomId] || "Desconocido",
@@ -344,6 +359,12 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 body: JSON.stringify(payload)
             });
             const data = await response.json();
+
+            // Refrescar datos después de una subida exitosa
+            if (data.ok) {
+                await get().fetchData();
+            }
+
             return data;
         } catch (error: unknown) {
             console.error("Webhook POST Error:", error);

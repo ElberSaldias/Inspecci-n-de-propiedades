@@ -163,6 +163,17 @@ const Dashboard: React.FC = () => {
                                                     ACTA GENERADA
                                                 </span>
                                             )}
+                                            {unit.procesoStatus === 'REALIZADA' && !isGenerated && (
+                                                <span className="inline-flex items-center rounded-lg bg-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/10 uppercase tracking-widest">
+                                                    <CheckCircle size={10} className="mr-1" />
+                                                    PROCESO REALIZADO
+                                                </span>
+                                            )}
+                                            {unit.procesoStatus === 'CANCELADA' && (
+                                                <span className="inline-flex items-center rounded-lg bg-red-100 px-2.5 py-1 text-[10px] font-bold text-red-700 ring-1 ring-inset ring-red-600/10 uppercase tracking-widest">
+                                                    CANCELADA
+                                                </span>
+                                            )}
                                         </div>
                                         <span className="text-xl font-black text-slate-900">Depto {unit.number}</span>
                                     </div>
@@ -186,15 +197,7 @@ const Dashboard: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    {!isGenerated ? (
-                                        <button
-                                            onClick={() => handleSelectUnit(unit)}
-                                            className="mt-4 w-full bg-primary-600 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 hover:bg-primary-700 transition-colors active:scale-[0.98] shadow-sm"
-                                        >
-                                            <span>Iniciar Proceso</span>
-                                            <ArrowRight size={18} />
-                                        </button>
-                                    ) : (
+                                    {isGenerated ? (
                                         <div className="mt-4 grid grid-cols-2 gap-3">
                                             <button
                                                 onClick={() => handleViewActa(unit.handoverUrl)}
@@ -217,6 +220,22 @@ const Dashboard: React.FC = () => {
                                                 </div>
                                             )}
                                         </div>
+                                    ) : unit.procesoStatus === 'REALIZADA' || unit.procesoStatus === 'CANCELADA' ? (
+                                        <button
+                                            disabled
+                                            className="mt-4 w-full bg-slate-100 text-slate-400 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 cursor-not-allowed shadow-none"
+                                        >
+                                            <span>{unit.procesoStatus === 'REALIZADA' ? 'Proceso Realizado' : 'Proceso Cancelado'}</span>
+                                            <CheckCircle size={18} />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => handleSelectUnit(unit)}
+                                            className="mt-4 w-full bg-primary-600 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 hover:bg-primary-700 transition-colors active:scale-[0.98] shadow-sm"
+                                        >
+                                            <span>Iniciar Proceso</span>
+                                            <ArrowRight size={18} />
+                                        </button>
                                     )}
                                 </div>
                             );
