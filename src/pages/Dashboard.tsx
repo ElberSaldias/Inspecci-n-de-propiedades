@@ -18,6 +18,38 @@ const Dashboard: React.FC = () => {
     const getUpcomingDeliveries = useInspectionStore((state) => state.getUpcomingDeliveries);
     const upcomingDeliveries = getUpcomingDeliveries();
 
+    // Logic for dynamic texts
+    const preEntries = upcomingDeliveries.filter(u =>
+        (u.processTypeLabel || '').toUpperCase().includes('PRE')
+    );
+    const regularDeliveries = upcomingDeliveries.filter(u =>
+        (u.processTypeLabel || '').toUpperCase().includes('ENTREGA') &&
+        !(u.processTypeLabel || '').toUpperCase().includes('PRE')
+    );
+
+    const countPre = preEntries.length;
+    const countEnt = regularDeliveries.length;
+    const countTotal = upcomingDeliveries.length;
+
+    let bannerSubtitle = '';
+    let sectionTitle = 'Próximas actividades (14 días)';
+
+    if (countTotal === 0) {
+        bannerSubtitle = 'No tienes entregas programadas en los próximos 14 días.';
+        sectionTitle = 'Próximas entregas (14 días)';
+    } else if (countPre > 0 && countEnt === 0) {
+        bannerSubtitle = `Tienes ${countPre} pre-entrega${countPre > 1 ? 's' : ''} programada${countPre > 1 ? 's' : ''} en los próximos 14 días.`;
+        sectionTitle = 'Próximas pre-entregas (14 días)';
+    } else if (countEnt > 0 && countPre === 0) {
+        bannerSubtitle = `Tienes ${countEnt} entrega${countEnt > 1 ? 's' : ''} programada${countEnt > 1 ? 's' : ''} en los próximos 14 días.`;
+        sectionTitle = 'Próximas entregas (14 días)';
+    } else {
+        bannerSubtitle = `Tienes ${countTotal} actividades programadas en los próximos 14 días.`;
+        const breakdown = `${countPre} pre-entrega${countPre !== 1 ? 's' : ''} y ${countEnt} entrega${countEnt !== 1 ? 's' : ''}.`;
+        bannerSubtitle = `Tienes ${countTotal} actividades programadas en los próximos 14 días. ${breakdown}`;
+        sectionTitle = 'Próximas actividades (14 días)';
+    }
+
     const handleSelectUnit = (unit: Unit) => {
         if (unit.isHandoverGenerated) {
             alert('Esta unidad ya cuenta con acta generada. Puedes ver o descargar el acta desde el dashboard.');
@@ -78,9 +110,7 @@ const Dashboard: React.FC = () => {
                 <div className="relative z-10">
                     <h1 className="text-2xl font-bold mb-1">Hola, {inspectorName || inspectorEmail || inspectorRut}</h1>
                     <p className="text-primary-100 font-medium">
-                        {upcomingDeliveries.length > 0
-                            ? `Tienes ${upcomingDeliveries.length} entregas programadas en los próximos 14 días.`
-                            : 'No tienes entregas programadas en los próximos 14 días.'}
+                        {bannerSubtitle}
                     </p>
                 </div>
 
@@ -93,7 +123,7 @@ const Dashboard: React.FC = () => {
             <div className="space-y-4">
                 <h2 className="text-lg font-bold text-slate-800 flex items-center">
                     <Calendar className="mr-2 text-primary-500" size={20} />
-                    Próximas entregas (14 días)
+                    {sectionTitle}
                 </h2>
 
                 {upcomingDeliveries.length === 0 ? (

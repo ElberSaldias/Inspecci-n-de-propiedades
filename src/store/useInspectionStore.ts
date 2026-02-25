@@ -240,23 +240,28 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                     // Add some extra mock deliveries if the agenda is sparse for testing
                     if (parsedUnits.length < 4) {
                         const now = new Date();
-                        const mockNames = ['Javier Pérez', 'Claudia Soto', 'Andrés Vicuña', 'Marta Lagos'];
-                        const mockDeptos = ['202', '305', '410', '101'];
+                        const mockData = [
+                            { name: 'Javier Pérez', depto: '202', type: 'PRE ENTREGA', dayOffset: 1 },
+                            { name: 'Claudia Soto', depto: '305', type: 'ENTREGA', dayOffset: 2 },
+                            { name: 'Andrés Vicuña', depto: '410', type: 'PRE ENTREGA', dayOffset: 3 },
+                            { name: 'Marta Lagos', depto: '101', type: 'ENTREGA', dayOffset: 4 },
+                            { name: 'Ricardo Gómez', depto: '502', type: 'PRE ENTREGA', dayOffset: 5 },
+                        ];
 
-                        mockNames.forEach((name, i) => {
-                            const date = addDays(now, i + 1);
+                        mockData.forEach((item, i) => {
+                            const date = addDays(now, item.dayOffset);
                             const dateStr = format(date, 'yyyy-MM-dd');
                             const projectId = parsedProjects[0]?.id || 'proj-test';
 
                             parsedUnits.push({
                                 id: `mock-unit-${i}`,
                                 projectId: projectId,
-                                number: mockDeptos[i],
-                                ownerName: name,
+                                number: item.depto,
+                                ownerName: item.name,
                                 ownerRut: '12.345.678-9',
                                 status: 'PENDING',
                                 inspectorId: get().inspectorEmail || get().inspectorRut || '',
-                                processTypeLabel: i % 2 === 0 ? 'PRE ENTREGA' : 'ENTREGA',
+                                processTypeLabel: item.type,
                                 date: dateStr,
                                 time: '10:00',
                                 projectAddress: parsedProjects[0]?.address || 'Calle Test 123',
