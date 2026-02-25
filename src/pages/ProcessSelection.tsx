@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInspectionStore } from '../store/useInspectionStore';
-import { UserCheck, Building, AlertCircle, ChevronRight } from 'lucide-react';
-import type { Unit } from '../types';
+import { UserCheck, Building, AlertCircle, ArrowRight } from 'lucide-react';
+
 
 const ProcessSelection: React.FC = () => {
     const navigate = useNavigate();
@@ -24,6 +24,12 @@ const ProcessSelection: React.FC = () => {
     useEffect(() => {
         if (!selectedUnit) {
             navigate('/identify');
+            return;
+        }
+
+        if (selectedUnit.isHandoverGenerated) {
+            alert('Esta unidad ya cuenta con acta generada.');
+            navigate('/');
         }
     }, [selectedUnit, navigate]);
 
@@ -83,9 +89,9 @@ const ProcessSelection: React.FC = () => {
                 <div className="bg-primary-100 text-primary-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                     <UserCheck size={32} />
                 </div>
-                <h1 className="text-2xl font-bold text-slate-900 mb-2">Confirmar datos del cliente</h1>
+                <h1 className="text-2xl font-bold text-slate-900 mb-2">Paso 3: Datos del Cliente</h1>
                 <p className="text-slate-500">
-                    Verifique la información del cliente antes de iniciar el proceso de inspección.
+                    Confirme los datos que aparecerán en el acta de inspección.
                 </p>
             </div>
 
@@ -94,23 +100,30 @@ const ProcessSelection: React.FC = () => {
                     <div>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Propiedad Seleccionada</p>
                         <h2 className="text-lg font-bold text-slate-900 leading-tight">
-                            {project?.name || 'Cargando...'} · Depto {selectedUnit.number}
+                            {project?.name || 'Edificio'} · Depto {selectedUnit.number}
                         </h2>
-                        {unitDate(selectedUnit) && (
-                            <p className="text-primary-600 text-sm font-bold mt-1">Agendada: {selectedUnit.date} · {selectedUnit.time} hrs</p>
-                        )}
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {selectedUnit.parking && (
+                                <span className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-600 uppercase">Estac: {selectedUnit.parking}</span>
+                            )}
+                            {selectedUnit.storage && (
+                                <span className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-600 uppercase">Bodega: {selectedUnit.storage}</span>
+                            )}
+                        </div>
+                        <p className="text-primary-600 text-sm font-bold mt-2">Agendada: {selectedUnit.date} · {selectedUnit.time} hrs</p>
                     </div>
-                    <div className="h-12 w-12 bg-primary-100 text-primary-600 rounded-2xl flex items-center justify-center shadow-inner">
+                    <div className="h-12 w-12 bg-primary-50 text-primary-600 rounded-2xl flex items-center justify-center border border-primary-100">
                         <Building size={24} />
                     </div>
                 </div>
 
                 <div className="space-y-5">
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Nombre del Cliente</label>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Nombre Completo</label>
                         <input
                             type="text"
-                            className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900"
+                            className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
+                            placeholder="Nombre del propietario"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                         />
@@ -120,8 +133,8 @@ const ProcessSelection: React.FC = () => {
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">RUT</label>
                         <input
                             type="text"
-                            className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900"
-                            placeholder="Ej: 12.345.678-9"
+                            className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
+                            placeholder="12.345.678-9"
                             value={rut}
                             onChange={(e) => setRut(e.target.value)}
                         />
@@ -132,19 +145,19 @@ const ProcessSelection: React.FC = () => {
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Teléfono</label>
                             <input
                                 type="tel"
-                                className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900"
-                                placeholder="+56 9 1234 5678"
+                                className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
+                                placeholder="+56 9 XXXX XXXX"
                                 value={phone}
                                 onChange={(e) => setPhone(e.target.value)}
                             />
                         </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Correo Electrónico</label>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Email</label>
                             <input
                                 type="email"
-                                className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-slate-50 text-slate-900"
-                                placeholder="correo@ejemplo.com"
+                                className="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-inner text-slate-900 font-medium"
+                                placeholder="usuario@ejemplo.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                             />
@@ -160,18 +173,23 @@ const ProcessSelection: React.FC = () => {
                 )}
             </div>
 
-            <button
-                onClick={handleConfirm}
-                className="w-full bg-primary-600 text-white font-bold py-6 px-8 rounded-2xl shadow-lg hover:bg-primary-700 transition-all active:scale-[0.98] flex items-center justify-center space-x-3 text-lg"
-            >
-                <span>Confirmar e iniciar inspección</span>
-                <ChevronRight size={24} />
-            </button>
+            <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                    onClick={() => navigate('/identify')}
+                    className="flex-1 bg-white border-2 border-slate-200 text-slate-600 font-bold py-4 px-8 rounded-2xl hover:bg-slate-50 transition-all active:scale-[0.98]"
+                >
+                    Volver
+                </button>
+                <button
+                    onClick={handleConfirm}
+                    className="flex-[2] bg-primary-600 text-white font-bold py-4 px-8 rounded-2xl shadow-lg hover:bg-primary-700 transition-all active:scale-[0.98] flex items-center justify-center space-x-2"
+                >
+                    <span>Confirmar y continuar</span>
+                    <ArrowRight size={20} />
+                </button>
+            </div>
         </div>
     );
 };
-
-// Helper inside component to check if date exists
-const unitDate = (unit: Unit | null) => unit?.date && unit?.time;
 
 export default ProcessSelection;

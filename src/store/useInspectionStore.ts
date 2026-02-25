@@ -237,8 +237,16 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                         });
                     });
 
+                    // Mock handover status for some units (e.g., every 5th unit)
+                    const enhancedUnits = parsedUnits.map((u, index) => ({
+                        ...u,
+                        isHandoverGenerated: index % 5 === 0,
+                        handoverUrl: index % 5 === 0 ? 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' : undefined,
+                        handoverDate: index % 5 === 0 ? u.date : undefined
+                    }));
+
                     set({
-                        units: parsedUnits,
+                        units: enhancedUnits,
                         projects: parsedProjects,
                         isLoadingData: false
                     });

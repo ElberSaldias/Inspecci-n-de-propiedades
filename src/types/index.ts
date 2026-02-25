@@ -29,6 +29,11 @@ export interface Unit {
     activeState?: string;       // estado
     date?: string;              // fecha
     time?: string;              // hora
+
+    // Handover generation status
+    isHandoverGenerated?: boolean;
+    handoverUrl?: string;
+    handoverDate?: string;
 }
 
 export interface Room {

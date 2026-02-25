@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInspectionStore } from '../store/useInspectionStore';
 import type { Unit } from '../types';
-import { Calendar, Clock, ChevronRight, MapPin, User } from 'lucide-react';
+import { Calendar, Clock, ChevronRight, MapPin, User, CheckCircle } from 'lucide-react';
 
 const IdentifyUnit: React.FC = () => {
     const navigate = useNavigate();
@@ -21,6 +21,10 @@ const IdentifyUnit: React.FC = () => {
     };
 
     const handleSelectUnit = (unit: Unit) => {
+        if (unit.isHandoverGenerated) {
+            alert('Esta unidad ya cuenta con acta generada. Ver detalle en el Dashboard.');
+            return;
+        }
         setSelectedUnit(unit);
         navigate('/process');
     };
@@ -49,16 +53,26 @@ const IdentifyUnit: React.FC = () => {
                     <div className="grid gap-4">
                         {upcomingDeliveries.map(unit => {
                             const project = getProjectForUnit(unit);
+                            const isGenerated = unit.isHandoverGenerated;
+
                             return (
                                 <button
                                     key={unit.id}
                                     onClick={() => handleSelectUnit(unit)}
-                                    className="bg-white p-6 rounded-3xl shadow-sm border-2 border-slate-100 flex flex-col items-start text-left hover:border-primary-500 hover:shadow-lg transition-all active:scale-[0.98] group relative overflow-hidden"
+                                    disabled={isGenerated}
+                                    className={`bg-white p-6 rounded-3xl shadow-sm border-2 ${isGenerated ? 'border-green-100 opacity-80 cursor-not-allowed' : 'border-slate-100 hover:border-primary-500 hover:shadow-lg active:scale-[0.98]'} flex flex-col items-start text-left transition-all group relative overflow-hidden`}
                                 >
                                     <div className="flex justify-between w-full mb-3">
-                                        <span className="inline-flex items-center rounded-lg bg-primary-100 px-3 py-1 text-[10px] font-bold text-primary-700 uppercase tracking-widest">
-                                            {unit.processTypeLabel || 'INSPECCIÓN'}
-                                        </span>
+                                        <div className="flex flex-col space-y-1">
+                                            <span className="inline-flex items-center rounded-lg bg-primary-100 px-3 py-1 text-[10px] font-bold text-primary-700 uppercase tracking-widest">
+                                                {unit.processTypeLabel || 'INSPECCIÓN'}
+                                            </span>
+                                            {isGenerated && (
+                                                <span className="inline-flex items-center rounded-lg bg-green-100 px-3 py-1 text-[10px] font-bold text-green-700 uppercase tracking-widest">
+                                                    ACTA GENERADA
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="text-primary-600 font-bold text-xs flex items-center">
                                             <Clock size={14} className="mr-1" />
                                             <span className="capitalize">{unit.date} · {unit.time || '--:--'}</span>
@@ -77,15 +91,23 @@ const IdentifyUnit: React.FC = () => {
                                             <MapPin size={14} className="mr-2 flex-shrink-0" />
                                             <span className="truncate">{project?.address || unit.projectAddress || 'Sin dirección'}</span>
                                         </div>
-                                        <div className="flex items-center text-sm text-slate-50">
+                                        <div className="flex items-center text-sm">
                                             <User size={14} className="mr-2 flex-shrink-0 text-slate-400" />
-                                            <span className="text-slate-700 font-medium">Cliente: <span className="font-bold">{unit.ownerName}</span></span>
+                                            <span className="text-slate-700 font-medium">Cliente: <span className="font-bold text-slate-900">{unit.ownerName}</span></span>
                                         </div>
                                     </div>
 
-                                    <div className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-200 group-hover:text-primary-500 transition-colors">
-                                        <ChevronRight size={32} />
-                                    </div>
+                                    {!isGenerated && (
+                                        <div className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-200 group-hover:text-primary-500 transition-colors">
+                                            <ChevronRight size={32} />
+                                        </div>
+                                    )}
+
+                                    {isGenerated && (
+                                        <div className="absolute top-1/2 right-4 -translate-y-1/2 text-green-200">
+                                            <CheckCircle size={32} />
+                                        </div>
+                                    )}
                                 </button>
                             );
                         })}
