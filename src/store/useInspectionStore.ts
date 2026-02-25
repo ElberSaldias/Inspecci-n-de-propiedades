@@ -386,25 +386,27 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     getDailyAgenda: () => {
         const state = get();
         const { units, inspectorEmail } = state;
-
         if (!inspectorEmail) return [];
 
+        const currentEmail = inspectorEmail.toLowerCase().trim();
+
         return units.filter(u => {
-            // 1. Exact match by email
+            // 1. Exact match by email (id_inspector)
             const rowId = (u.inspectorId || '').toLowerCase().trim();
-            const currentEmail = inspectorEmail.toLowerCase().trim();
             if (rowId !== currentEmail) return false;
 
             // 2. Active state
-            if ((u.activeState || '').toLowerCase() !== 'activo') return false;
+            const isActive = (u.activeState || '').toLowerCase().trim() === 'activo';
+            if (!isActive) return false;
 
-            // 3. Today's date check (Manual parsing dd-mm-yyyy)
+            // 3. Date check (Today)
             if (!u.date) return false;
             const dateStr = u.date.trim();
+
+            // Manual parsing dd-mm-yyyy or yyyy-mm-dd
             const parts = dateStr.split(/[-/]/);
             if (parts.length !== 3) return false;
 
-            // Assuming dd-mm-yyyy or similar
             let d, m, y;
             if (parts[2].length === 4) { // dd-mm-yyyy
                 d = parseInt(parts[0], 10);
@@ -421,14 +423,9 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
 
             return isToday(parsedDate);
         }).sort((a, b) => {
-            if (!a.time && !b.time) return 0;
-            if (!a.time) return 1;
-            if (!b.time) return -1;
-            const parseTime = (timeStr: string) => {
-                const parts = timeStr.split(':').map(str => parseInt(str.trim(), 10));
-                return (parts[0] || 0) * 60 + (parts[1] || 0);
-            };
-            return parseTime(a.time) - parseTime(b.time);
+            const timeA = (a.time || '00:00').split(':').map(s => parseInt(s, 10));
+            const timeB = (b.time || '00:00').split(':').map(s => parseInt(s, 10));
+            return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
         });
     },
 
@@ -437,19 +434,20 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         const { units, inspectorEmail } = state;
         if (!inspectorEmail) return [];
 
-        const now = startOfDay(new Date());
-        const endDate = endOfDay(addDays(now, 14));
+        const currentEmail = inspectorEmail.toLowerCase().trim();
+        const nowAtStart = startOfDay(new Date());
+        const endDate = endOfDay(addDays(nowAtStart, 14));
 
         return units.filter(u => {
-            // 1. Exact match by email
+            // 1. Exact match by email (id_inspector)
             const rowId = (u.inspectorId || '').toLowerCase().trim();
-            const currentEmail = inspectorEmail.toLowerCase().trim();
             if (rowId !== currentEmail) return false;
 
             // 2. Active state
-            if ((u.activeState || '').toLowerCase() !== 'activo') return false;
+            const isActive = (u.activeState || '').toLowerCase().trim() === 'activo';
+            if (!isActive) return false;
 
-            // 3. Date check (Manual parsing dd-mm-yyyy)
+            // 3. Date check (Within range)
             if (!u.date) return false;
             const dateStr = u.date.trim();
             const parts = dateStr.split(/[-/]/);
@@ -469,20 +467,19 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             const parsedDate = new Date(y, m, d);
             if (!isValid(parsedDate)) return false;
 
-            return isWithinInterval(parsedDate, { start: now, end: endDate });
+            return isWithinInterval(parsedDate, { start: nowAtStart, end: endDate });
         }).sort((a, b) => {
-            // Sort by Date then Time
-            const parseFullDate = (u: Unit) => {
+            const getSortTime = (u: Unit) => {
                 const parts = (u.date || '').trim().split(/[-/]/);
                 let d = 1, m = 0, y = 2000;
                 if (parts.length === 3) {
                     if (parts[2].length === 4) { d = parseInt(parts[0], 10); m = parseInt(parts[1], 10) - 1; y = parseInt(parts[2], 10); }
                     else if (parts[0].length === 4) { y = parseInt(parts[0], 10); m = parseInt(parts[1], 10) - 1; d = parseInt(parts[2], 10); }
                 }
-                const timeParts = (u.time || '00:00').split(':').map(s => parseInt(s, 10));
-                return new Date(y, m, d, timeParts[0] || 0, timeParts[1] || 0).getTime();
+                const tp = (u.time || '00:00').split(':').map(s => parseInt(s, 10));
+                return new Date(y, m, d, tp[0] || 0, tp[1] || 0).getTime();
             };
-            return parseFullDate(a) - parseFullDate(b);
+            return getSortTime(a) - getSortTime(b);
         });
     },
 

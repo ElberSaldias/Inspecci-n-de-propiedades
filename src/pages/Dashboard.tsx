@@ -129,13 +129,37 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Debug Mode Info (Only in Dev) */}
-            {import.meta.env.DEV && (
-                <div className="bg-slate-800 text-slate-300 p-3 rounded-xl text-[10px] font-mono flex flex-wrap gap-x-4 gap-y-1">
-                    <span>Filtrando por: {inspectorEmail}</span>
-                    <span>Total filas: {units.length}</span>
-                    <span>Filtradas (14d): {upcomingDeliveries.length}</span>
-                </div>
-            )}
+            {import.meta.env.DEV && (() => {
+                const currentEmail = (inspectorEmail || '').toLowerCase().trim();
+                const afterInspector = units.filter(u => (u.inspectorId || '').toLowerCase().trim() === currentEmail);
+                const uniqueInspectors = Array.from(new Set(units.map(u => (u.inspectorId || 'VACÍO').trim()))).sort();
+
+                return (
+                    <div className="bg-slate-900 text-slate-300 p-4 rounded-2xl text-[10px] font-mono space-y-2 border border-slate-700 shadow-xl">
+                        <div className="flex justify-between border-b border-slate-800 pb-1">
+                            <span className="text-amber-400 font-bold">DEBUG PANEL</span>
+                            <span className="text-slate-500">v1.2.0-strict</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                            <div>User: <span className="text-white">{inspectorName || 'No Name'}</span></div>
+                            <div>Email: <span className="text-white">{inspectorEmail}</span></div>
+                            <div>Rows Total: <span className="text-cyan-400">{units.length}</span></div>
+                            <div>Match Email: <span className="text-cyan-400">{afterInspector.length}</span></div>
+                            <div>Final List (14d): <span className="text-green-400">{upcomingDeliveries.length}</span></div>
+                        </div>
+                        <div className="pt-2">
+                            <div className="text-slate-500 mb-1 font-bold">Inspectores en Sheet ({uniqueInspectors.length}):</div>
+                            <div className="flex flex-wrap gap-1">
+                                {uniqueInspectors.map((id, i) => (
+                                    <span key={i} className={`px-1.5 py-0.5 rounded ${id.toLowerCase() === currentEmail ? 'bg-green-900 text-green-200' : 'bg-slate-800'}`}>
+                                        {id}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             <div className="space-y-4">
                 <h2 className="text-lg font-bold text-slate-800 flex items-center">
