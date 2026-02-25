@@ -247,7 +247,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                             handoverUrl: row.acta_url || row.acta_pdf_url || undefined,
                             handoverDate: row.acta_updated_at || undefined,
 
-                            procesoStatus: (row.proceso_status || '') as Unit['procesoStatus'],
+                            procesoStatus: (row.proceso_status || '').trim().toUpperCase() as Unit['procesoStatus'],
                             procesoCompletedAt: row.proceso_completed_at,
                             procesoCompletedBy: row.proceso_completed_by,
                             procesoNotes: row.proceso_notes
