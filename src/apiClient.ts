@@ -1,18 +1,18 @@
 import { API_TIMEOUT } from './config';
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
     ok: boolean;
     message?: string;
     data?: T;
     error?: string;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 export let lastApiCall: {
     endpoint: string;
-    options: any;
+    options: RequestInit;
     status?: number;
-    response?: any;
+    response?: unknown;
     timestamp: string;
 } | null = null;
 
@@ -21,29 +21,26 @@ export async function fetchJSON<T = any>(url: string, options: RequestInit = {},
     const id = setTimeout(() => controller.abort(), API_TIMEOUT);
 
     try {
-        const response = await fetch(url, {
+        const fetchOptions: RequestInit = {
             ...options,
             signal: controller.signal,
-        });
+        };
 
+        const response = await fetch(url, fetchOptions);
         clearTimeout(id);
 
+        const text = await response.text();
         let data: any;
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-            data = await response.json();
-        } else {
-            const text = await response.text();
-            try {
-                data = JSON.parse(text);
-            } catch {
-                data = { ok: response.ok, message: text };
-            }
+
+        try {
+            data = JSON.parse(text);
+        } catch {
+            data = { ok: response.ok, message: text };
         }
 
         lastApiCall = {
             endpoint: url,
-            options,
+            options: fetchOptions,
             status: response.status,
             response: data,
             timestamp: new Date().toISOString()
@@ -54,9 +51,9 @@ export async function fetchJSON<T = any>(url: string, options: RequestInit = {},
             throw new Error(`Error de servidor (${response.status}): ${data.message || response.statusText}`);
         }
 
-        if (data && typeof data === 'object' && data.ok === false) {
+        if (data && typeof data === 'object' && (data as any).ok === false) {
             console.warn(`[API Warning] Logic failure at ${url}:`, data);
-            throw new Error(data.error || data.message || 'La operación no pudo ser completada en el servidor');
+            throw new Error((data as any).error || (data as any).message || 'La operación no pudo ser completada en el servidor');
         }
 
         return data as T;
@@ -66,7 +63,7 @@ export async function fetchJSON<T = any>(url: string, options: RequestInit = {},
         lastApiCall = {
             endpoint: url,
             options,
-            response: { error: error.message },
+            response: { error: error instanceof Error ? error.message : String(error) },
             timestamp: new Date().toISOString()
         };
 

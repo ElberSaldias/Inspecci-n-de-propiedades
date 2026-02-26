@@ -108,7 +108,12 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     checkConnection: async () => {
         set({ connectionStatus: 'CHECKING' });
         try {
-            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=health&t=${Date.now()}`);
+            // Usar POST sin headers para evitar preflight
+            const data = await fetchJSON(APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'health', t: Date.now() })
+            });
+
             if (data.ok) {
                 set({ connectionStatus: 'CONNECTED' });
                 return true;
@@ -131,7 +136,8 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 method: 'POST',
                 body: JSON.stringify({
                     action: 'login',
-                    rut: normalizedRut
+                    rut: normalizedRut,
+                    email: input.includes('@') ? input.trim().toLowerCase() : undefined
                 })
             });
 
@@ -172,7 +178,8 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 method: 'POST',
                 body: JSON.stringify({
                     action: 'getAssignments',
-                    rut: rut
+                    rut: rut,
+                    email: get().inspectorEmail
                 })
             });
 
@@ -251,6 +258,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         const payload = {
             action: 'startProcess',
             rut: state.inspectorRut,
+            email: state.inspectorEmail,
             departamento: String(unit.number),
             fecha: unit.date,
             hora: unit.time,
@@ -305,6 +313,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         const payload = {
             action: "completeProcess",
             rut: state.inspectorRut,
+            email: state.inspectorEmail,
             departamento: String(state.selectedUnit.number),
             fecha: state.selectedUnit.date,
             hora: state.selectedUnit.time,
