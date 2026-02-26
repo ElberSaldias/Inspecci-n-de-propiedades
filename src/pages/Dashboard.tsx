@@ -223,7 +223,7 @@ const Dashboard: React.FC = () => {
                                         <span className="text-slate-400 italic">{lastApiCall.timestamp}</span>
                                         <span className="text-right font-bold text-white">Status: {lastApiCall.status || 'N/A'}</span>
                                     </div>
-                                    <pre className="text-slate-300 text-[8px] mt-1 bg-slate-950 p-1.5 rounded border border-slate-800">
+                                    <pre className="text-slate-300 text-[8px] mt-1 bg-slate-950 p-1.5 rounded border border-slate-800 max-h-60 overflow-auto">
                                         {JSON.stringify(lastApiCall.response, null, 2)}
                                     </pre>
                                 </div>
@@ -232,6 +232,19 @@ const Dashboard: React.FC = () => {
                             )}
                         </div>
                     </div>
+
+                    {lastApiCall?.response?.debug && (
+                        <div className="bg-amber-950/30 border border-amber-500/30 p-3 rounded-lg space-y-2">
+                            <p className="text-amber-400 font-bold text-[10px] uppercase">Backend Debug Tracer:</p>
+                            <div className="grid grid-cols-2 gap-2 text-[9px] text-amber-200/70">
+                                <div>Row Match: <span className="text-amber-400">{lastApiCall.response.debug.rowIndex || 'Not Found'}</span></div>
+                                <div>Matches: <span className="text-amber-400">{lastApiCall.response.debug.matchesCount}</span></div>
+                            </div>
+                            <pre className="text-[8px] text-amber-500 font-mono">
+                                {JSON.stringify(lastApiCall.response.debug.target, null, 2)}
+                            </pre>
+                        </div>
+                    )}
 
                     <div className="flex space-x-2 pt-2">
                         <button onClick={() => fetchData()} className="flex-1 bg-primary-600/20 text-primary-400 border border-primary-500/30 py-2 rounded-lg font-bold hover:bg-primary-600/30 transition-colors">

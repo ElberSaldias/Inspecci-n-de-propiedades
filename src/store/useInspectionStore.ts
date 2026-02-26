@@ -239,9 +239,10 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     startProcess: async (unit: Unit, processType: ProcessType) => {
         const state = get();
         const payload = {
-            id_inspector: state.inspectorEmail,
-            tipo_proceso: processType === 'PRE_ENTREGA' ? 'pre_entrega' : 'entrega',
-            departamento: unit.number,
+            id_inspector: (state.inspectorEmail || "").toLowerCase().trim(),
+            tipo_proceso: unit.processTypeLabel, // Raw value from sheet
+            tipo_proceso_normalized: processType === 'PRE_ENTREGA' ? 'pre_entrega' : 'entrega',
+            departamento: String(unit.number),
             fecha: unit.date,
             hora: unit.time,
             device_id: getDeviceId()
@@ -267,7 +268,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     getActaStatus: async (unit: Unit) => {
         const state = get();
         try {
-            const url = `${APPS_SCRIPT_URL}?action=getActaStatus&id_inspector=${encodeURIComponent(state.inspectorEmail || "")}&departamento=${encodeURIComponent(unit.number)}&tipo_proceso=${encodeURIComponent(unit.processTypeLabel || "")}`;
+            const url = `${APPS_SCRIPT_URL}?action=getActaStatus&id_inspector=${encodeURIComponent((state.inspectorEmail || "").toLowerCase().trim())}&departamento=${encodeURIComponent(unit.number)}&tipo_proceso=${encodeURIComponent(unit.processTypeLabel || "")}`;
             const data = await fetchJSON(url);
             return data;
         } catch (error: any) {
@@ -291,9 +292,9 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
 
         const payload = {
             process_id: state.selectedUnit.processId,
-            id_inspector: state.inspectorEmail,
+            id_inspector: (state.inspectorEmail || "").toLowerCase().trim(),
             tipo_proceso: state.selectedUnit.processTypeLabel,
-            departamento: state.selectedUnit.number,
+            departamento: String(state.selectedUnit.number),
             fecha: state.selectedUnit.date,
             hora: state.selectedUnit.time,
             device_id: getDeviceId(),
