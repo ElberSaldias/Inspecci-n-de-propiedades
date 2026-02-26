@@ -29,18 +29,15 @@ const Login: React.FC = () => {
         e.preventDefault();
         setLocalError('');
 
-        console.log("Login attempt started...");
+        // D) Diagnóstico temporal
+        console.log("WEBAPP_URL:", import.meta.env.VITE_WEBAPP_URL);
+        console.log("API_KEY exists:", !!import.meta.env.VITE_API_KEY);
 
         const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL;
         const API_KEY = import.meta.env.VITE_API_KEY;
 
-        console.log("Environment variables check:", {
-            urlPresent: !!WEBAPP_URL,
-            keyPresent: !!API_KEY
-        });
-
+        // A) / C) Validar configuración
         if (!WEBAPP_URL || !API_KEY) {
-            console.error("Missing config variables");
             setLocalError('Configuration Error');
             return;
         }
@@ -53,62 +50,65 @@ const Login: React.FC = () => {
         try {
             setIsLoading(true);
             const normalizedRut = rutInput.replace(/[^0-9kK]/g, '').toUpperCase();
-            console.log("Normalized RUT:", normalizedRut);
 
-            // Intentar obtener asignaciones
-            let assignmentsResponse;
-            try {
-                console.log("Calling getAssignments API...");
-                assignmentsResponse = await api("getAssignments", {
-                    rut: normalizedRut
-                });
-                console.log("API Response received:", assignmentsResponse);
-            } catch (apiErr) {
-                console.error("API Call failed Exception:", apiErr);
-                // No bloqueamos el acceso si la API falla, permitimos entrar al dashboard
+            // C) Llamar api("login", { rut })
+            const login = await api("login", { rut: normalizedRut });
+
+            if (!login.ok) {
+                setLocalError(login.error || "RUT no encontrado");
+                setIsLoading(false);
+                return;
             }
 
-            // Guardar datos básicos - SIEMPRE permitimos el paso si llegamos aquí
-            setInspectorRut(normalizedRut);
-            setInspectorData({
-                nombre: "Inspector",
-                email: "",
-                rol: "Inspector"
+            // C) si ok, usar user.email para llamar api("assignments", { email: user.email })
+            const assignmentsResponse = await api("assignments", {
+                email: login.user.email
             });
 
-            if (assignmentsResponse && assignmentsResponse.ok && Array.isArray(assignmentsResponse.data)) {
-                console.log("Parsing assignments with new columns...");
-                const parsedUnits: Unit[] = assignmentsResponse.data.map((row: any) => ({
+            if (!assignmentsResponse.ok) {
+                setLocalError("Error obteniendo asignaciones");
+                setIsLoading(false);
+                return;
+            }
+
+            // Guardar usuario y asignaciones en estado global
+            setInspectorRut(normalizedRut);
+            setInspectorData(login.user);
+
+            if (assignmentsResponse.data && Array.isArray(assignmentsResponse.data)) {
+                const parsedUnits: Unit[] = assignmentsResponse.data.map((row: Record<string, unknown>) => ({
                     id: `unit-${row.edificio}-${row.departamento}`,
-                    projectId: row.edificio || 'PROYECTO',
+                    projectId: (row.edificio as string) || 'PROYECTO',
                     number: String(row.departamento || ''),
-                    ownerName: row.cliente || 'Cliente',
-                    ownerRut: '', // No presente en la nueva lista pero requerido por tipo
+                    ownerName: (row.cliente as string) || 'Cliente',
+                    ownerRut: '',
                     status: row.estado === 'Realizada' ? 'COMPLETED' : 'PENDING',
-                    date: row.fecha,
-                    time: row.hora,
-                    processTypeLabel: row.tipo_proceso,
-                    projectAddress: row.direccion,
-                    edificio: row.edificio,
-                    departamento: row.departamento,
-                    direccion: row.direccion,
-                    cliente: row.cliente,
-                    estacionamiento: row.estacionamiento,
-                    bodega: row.bodega
+                    date: row.fecha as string,
+                    time: row.hora as string,
+                    processTypeLabel: row.tipo_proceso as string,
+                    projectAddress: row.direccion as string,
+                    edificio: row.edificio as string,
+                    departamento: row.departamento as string,
+                    direccion: row.direccion as string,
+                    cliente: row.cliente as string,
+                    estacionamiento: row.estacionamiento as string,
+                    bodega: row.bodega as string
                 }));
                 setUnits(parsedUnits);
-            }
-            else {
-                console.log("No assignments found or invalid response format, continuing with empty list.");
+            } else {
                 setUnits([]);
             }
 
-            console.log("Navigating to dashboard...");
             navigate('/');
 
         } catch (err) {
-            console.error("Unhandled error in handleLogin:", err);
-            setLocalError("Error inesperado. Revisa la consola.");
+            const error = err as Error;
+            console.error("Login Error:", error);
+            if (error.message && error.message.includes("Configuration Error")) {
+                setLocalError("Configuration Error");
+            } else {
+                setLocalError("Error de conexión con el servidor");
+            }
         } finally {
             setIsLoading(false);
         }
