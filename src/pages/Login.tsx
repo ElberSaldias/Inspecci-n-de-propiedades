@@ -29,6 +29,15 @@ const Login: React.FC = () => {
         e.preventDefault();
         setLocalError('');
 
+        // 3️⃣ Validar que import.meta.env.VITE_WEBAPP_URL y import.meta.env.VITE_API_KEY existan
+        const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL;
+        const API_KEY = import.meta.env.VITE_API_KEY;
+
+        if (!WEBAPP_URL || !API_KEY) {
+            setLocalError('Configuration Error');
+            return;
+        }
+
         if (!rutInput.trim()) {
             setLocalError('Por favor ingrese su RUT.');
             return;
@@ -64,13 +73,7 @@ const Login: React.FC = () => {
             setInspectorRut(normalizedRut);
             setInspectorData(login.user);
 
-            // Map the raw data to Units if necessary
-            // In useInspectionStore.ts there is already logic to parse these.
-            // For now, I'll pass the raw data and we might need to parse it if the store expects Unit objects.
-            // Let's check how the store parses it. 
-            // Actually, I'll just use a simplified version of the parser.
-
-            const parsedUnits: Unit[] = assignmentsResponse.data.map((row: any) => ({
+            const parsedUnits: Unit[] = assignmentsResponse.data.map((row: Record<string, unknown>) => ({
                 id: row.id || `unit-${row.departamento}`,
                 projectId: row.edificio || 'PROYECTO',
                 number: String(row.departamento || row.depto || ''),
@@ -90,13 +93,17 @@ const Login: React.FC = () => {
             }));
 
             setUnits(parsedUnits);
-
-            // Redirigir a dashboard
             navigate('/');
 
         } catch (err) {
-            console.error(err);
-            setLocalError("Error de conexión con el servidor");
+            const error = err as Error;
+            console.error(error);
+            // 4️⃣ Agregar validación visual - No mostrar errores técnicos
+            if (error.message && error.message.includes("Configuration Error")) {
+                setLocalError("Configuration Error");
+            } else {
+                setLocalError("Error de conexión con el servidor");
+            }
         } finally {
             setIsLoading(false);
         }
