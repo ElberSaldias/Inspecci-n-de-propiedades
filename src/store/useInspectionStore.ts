@@ -20,6 +20,8 @@ interface InspectionState {
 
     // Actions
     setInspectorRut: (rut: string | null) => void;
+    setInspectorData: (data: { nombre: string; email: string; rol: string }) => void;
+    setUnits: (units: Unit[]) => void;
     setSelectedUnit: (unit: Unit | null) => void;
     updateSelectedUnit: (updates: Partial<Unit>) => void;
     setProcessType: (type: ProcessType | null) => void;
@@ -81,6 +83,12 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     },
 
     setInspectorRut: (rut: string | null) => set({ inspectorRut: rut }),
+    setInspectorData: (data: { nombre: string; email: string; rol: string }) => set({
+        inspectorName: data.nombre,
+        inspectorEmail: data.email,
+        inspectorRole: data.rol
+    }),
+    setUnits: (units: Unit[]) => set({ units }),
     setSelectedUnit: (unit: Unit | null) => set({ selectedUnit: unit }),
     updateSelectedUnit: (updates: Partial<Unit>) => set((state) => ({
         selectedUnit: state.selectedUnit ? { ...state.selectedUnit, ...updates } : null

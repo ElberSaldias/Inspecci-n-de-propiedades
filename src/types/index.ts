@@ -43,6 +43,14 @@ export interface Unit {
     processId?: string;      // process_id
     updatedAt?: string;      // updated_at
     lastDeviceId?: string;   // last_device_id
+
+    // Raw fields from Google Sheets API
+    edificio?: string;
+    departamento?: string;
+    direccion?: string;
+    cliente?: string;
+    estacionamiento?: string;
+    bodega?: string;
 }
 
 export interface Room {

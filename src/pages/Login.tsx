@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInspectionStore } from '../store/useInspectionStore';
+import type { Unit } from '../types';
 import { IdCard, Building2, Loader2 } from 'lucide-react';
+import { api } from '../lib/api';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
     const inspectorRut = useInspectionStore((state) => state.inspectorRut);
-    const validateLogin = useInspectionStore((state) => state.validateLogin);
+
+    const setInspectorRut = useInspectionStore((state) => state.setInspectorRut);
+    const setInspectorData = useInspectionStore((state) => state.setInspectorData);
+    const setUnits = useInspectionStore((state) => state.setUnits);
 
     const [rutInput, setRutInput] = useState('');
     const dataError = useInspectionStore((state) => state.dataError);
@@ -29,12 +34,71 @@ const Login: React.FC = () => {
             return;
         }
 
-        setIsLoading(true);
-        const isValid = await validateLogin(rutInput);
-        setIsLoading(false);
+        try {
+            setIsLoading(true);
 
-        if (isValid) {
+            // 5️⃣ Normalizar RUT quitando puntos y guiones
+            const normalizedRut = rutInput.replace(/[^0-9kK]/g, '').toUpperCase();
+
+            // 2️⃣ Modificar pantalla de Login - Llamada API
+            const login = await api("login", { rut: normalizedRut });
+
+            if (!login.ok) {
+                setLocalError(login.error || "RUT no encontrado");
+                setIsLoading(false);
+                return;
+            }
+
+            const assignmentsResponse = await api("getAssignments", {
+                rut: normalizedRut,
+                email: login.user.email
+            });
+
+            if (!assignmentsResponse.ok) {
+                setLocalError("Error obteniendo asignaciones");
+                setIsLoading(false);
+                return;
+            }
+
+            // Guardar usuario y asignaciones en estado global
+            setInspectorRut(normalizedRut);
+            setInspectorData(login.user);
+
+            // Map the raw data to Units if necessary
+            // In useInspectionStore.ts there is already logic to parse these.
+            // For now, I'll pass the raw data and we might need to parse it if the store expects Unit objects.
+            // Let's check how the store parses it. 
+            // Actually, I'll just use a simplified version of the parser.
+
+            const parsedUnits: Unit[] = assignmentsResponse.data.map((row: any) => ({
+                id: row.id || `unit-${row.departamento}`,
+                projectId: row.edificio || 'PROYECTO',
+                number: String(row.departamento || row.depto || ''),
+                ownerName: row.cliente || row.propietario || 'Cliente',
+                ownerRut: row.rut_cliente || '',
+                status: 'PENDING',
+                date: row.fecha,
+                time: row.hora,
+                processTypeLabel: row.tipo_proceso,
+                projectAddress: row.direccion,
+                edificio: row.edificio,
+                departamento: row.departamento,
+                direccion: row.direccion,
+                cliente: row.cliente,
+                estacionamiento: row.estacionamiento,
+                bodega: row.bodega
+            }));
+
+            setUnits(parsedUnits);
+
+            // Redirigir a dashboard
             navigate('/');
+
+        } catch (err) {
+            console.error(err);
+            setLocalError("Error de conexión con el servidor");
+        } finally {
+            setIsLoading(false);
         }
     };
 
