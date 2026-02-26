@@ -29,7 +29,6 @@ const Login: React.FC = () => {
         e.preventDefault();
         setLocalError('');
 
-        // 3️⃣ Validar que import.meta.env.VITE_WEBAPP_URL y import.meta.env.VITE_API_KEY existan
         const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL;
         const API_KEY = import.meta.env.VITE_API_KEY;
 
@@ -46,32 +45,29 @@ const Login: React.FC = () => {
         try {
             setIsLoading(true);
 
-            // 5️⃣ Normalizar RUT quitando puntos y guiones
+            // Normalizar RUT
             const normalizedRut = rutInput.replace(/[^0-9kK]/g, '').toUpperCase();
 
-            // 2️⃣ Modificar pantalla de Login - Llamada API
-            const login = await api("login", { rut: normalizedRut });
-
-            if (!login.ok) {
-                setLocalError(login.error || "RUT no encontrado");
-                setIsLoading(false);
-                return;
-            }
-
+            // OMITIR VALIDACIÓN DE ACCESO: Saltamos el paso de api("login")
+            // Intentamos obtener asignaciones directamente
             const assignmentsResponse = await api("getAssignments", {
-                rut: normalizedRut,
-                email: login.user.email
+                rut: normalizedRut
             });
 
             if (!assignmentsResponse.ok) {
-                setLocalError("Error obteniendo asignaciones");
+                // Si falla el obtener asignaciones, mostramos error
+                setLocalError("No se encontraron asignaciones para este RUT o error de red");
                 setIsLoading(false);
                 return;
             }
 
-            // Guardar usuario y asignaciones en estado global
+            // Guardar datos básicos
             setInspectorRut(normalizedRut);
-            setInspectorData(login.user);
+            setInspectorData({
+                nombre: "Inspector", // Nombre genérico ya que omitimos la validación
+                email: "",
+                rol: "Inspector"
+            });
 
             const parsedUnits: Unit[] = assignmentsResponse.data.map((row: Record<string, unknown>) => ({
                 id: row.id || `unit-${row.departamento}`,
@@ -96,9 +92,8 @@ const Login: React.FC = () => {
             navigate('/');
 
         } catch (err) {
+            console.error(err);
             const error = err as Error;
-            console.error(error);
-            // 4️⃣ Agregar validación visual - No mostrar errores técnicos
             if (error.message && error.message.includes("Configuration Error")) {
                 setLocalError("Configuration Error");
             } else {
