@@ -8,7 +8,15 @@ export interface ApiResponse<T = any> {
     [key: string]: any;
 }
 
-export async function fetchJSON<T = any>(url: string, options: RequestInit = {}): Promise<T> {
+export let lastApiCall: {
+    endpoint: string;
+    options: any;
+    status?: number;
+    response?: any;
+    timestamp: string;
+} | null = null;
+
+export async function fetchJSON<T = any>(url: string, options: RequestInit = {}, retries = 2): Promise<T> {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), API_TIMEOUT);
 
@@ -20,15 +28,32 @@ export async function fetchJSON<T = any>(url: string, options: RequestInit = {})
 
         clearTimeout(id);
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[API Error] Status: ${response.status} | Endpoint: ${url} | Body: ${errorText}`);
-            throw new Error(`Error de servidor (${response.status}): ${response.statusText}`);
+        let data: any;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            const text = await response.text();
+            try {
+                data = JSON.parse(text);
+            } catch {
+                data = { ok: response.ok, message: text };
+            }
         }
 
-        const data = await response.json();
+        lastApiCall = {
+            endpoint: url,
+            options,
+            status: response.status,
+            response: data,
+            timestamp: new Date().toISOString()
+        };
 
-        // Google Apps Script usually returns 'ok' in the response body if it's following the pattern
+        if (!response.ok) {
+            console.error(`[API Error] Status: ${response.status} | Endpoint: ${url} | Body:`, data);
+            throw new Error(`Error de servidor (${response.status}): ${data.message || response.statusText}`);
+        }
+
         if (data && typeof data === 'object' && data.ok === false) {
             console.warn(`[API Warning] Logic failure at ${url}:`, data);
             throw new Error(data.error || data.message || 'La operación no pudo ser completada en el servidor');
@@ -37,6 +62,19 @@ export async function fetchJSON<T = any>(url: string, options: RequestInit = {})
         return data as T;
     } catch (error: any) {
         clearTimeout(id);
+
+        lastApiCall = {
+            endpoint: url,
+            options,
+            response: { error: error.message },
+            timestamp: new Date().toISOString()
+        };
+
+        if (retries > 0 && error.name !== 'AbortError') {
+            console.warn(`[API Retry] Retrying ${url}... (${retries} left)`);
+            return fetchJSON(url, options, retries - 1);
+        }
+
         if (error.name === 'AbortError') {
             console.error(`[API Timeout] Request to ${url} timed out after ${API_TIMEOUT}ms`);
             throw new Error('La conexión tardó demasiado tiempo. Por favor, reintenta.');

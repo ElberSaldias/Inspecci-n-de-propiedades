@@ -5,6 +5,7 @@ import { format, parse, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useInspectionStore } from '../store/useInspectionStore';
 import type { Unit, ProcessType } from '../types';
+import { lastApiCall } from '../apiClient';
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -18,6 +19,8 @@ const Dashboard: React.FC = () => {
     const connectionStatus = useInspectionStore((state) => state.connectionStatus);
     const checkConnection = useInspectionStore((state) => state.checkConnection);
     const fetchData = useInspectionStore((state) => state.fetchData);
+    const startProcess = useInspectionStore((state) => state.startProcess);
+    const [showDiag, setShowDiag] = React.useState(false);
 
     const getUpcomingDeliveries = useInspectionStore((state) => state.getUpcomingDeliveries);
     const upcomingDeliveries = getUpcomingDeliveries();
@@ -52,21 +55,23 @@ const Dashboard: React.FC = () => {
         sectionTitle = 'Próximos procesos (14 días)';
     }
 
-    const handleSelectUnit = (unit: Unit) => {
-        if (unit.isHandoverGenerated) {
-            alert('Esta unidad ya cuenta con acta generada. Puedes ver o descargar el acta desde el dashboard.');
-            return;
-        }
-
+    const handleSelectUnit = async (unit: Unit) => {
         const store = useInspectionStore.getState();
-        store.setSelectedUnit(unit);
-
-        // Auto-set process type based on label
         const type: ProcessType = (unit.processTypeLabel || '').toUpperCase().includes('PRE')
             ? 'PRE_ENTREGA'
             : 'ENTREGA_FINAL';
-        store.setProcessType(type);
 
+        // If it's a new process, we notify the server
+        if (!unit.procesoStatus || unit.procesoStatus === 'PROGRAMADA') {
+            const res = await startProcess(unit, type);
+            if (!res.ok) {
+                alert(`No se pudo iniciar el proceso: ${res.error || 'Error desconocido'}`);
+                return;
+            }
+        }
+
+        store.setSelectedUnit(unit);
+        store.setProcessType(type);
         navigate('/process');
     };
 
@@ -156,13 +161,88 @@ const Dashboard: React.FC = () => {
                     </span>
                 </div>
                 <button
-                    onClick={() => checkConnection()}
+                    onClick={() => {
+                        checkConnection();
+                        setShowDiag(!showDiag);
+                    }}
                     disabled={connectionStatus === 'CHECKING'}
                     className="text-[10px] font-bold text-primary-600 bg-primary-50 px-3 py-1.5 rounded-lg hover:bg-primary-100 transition-colors uppercase tracking-wider disabled:opacity-50"
                 >
-                    {connectionStatus === 'ERROR' ? 'Reintentar' : 'Probar conexión'}
+                    {showDiag ? 'Ocultar Diagnostic' : (connectionStatus === 'ERROR' ? 'Reintentar' : 'Probar conexión')}
                 </button>
             </div>
+
+            {/* Diagnostic Mode Panel */}
+            {showDiag && (
+                <div className="bg-slate-900 text-slate-300 p-5 rounded-2xl text-[11px] font-mono space-y-4 border border-slate-700 shadow-2xl animate-in slide-in-from-top-4 duration-300">
+                    <div className="flex justify-between border-b border-slate-800 pb-2">
+                        <span className="text-amber-400 font-bold uppercase tracking-widest text-xs">Diagnostic Panel</span>
+                        <div className="flex space-x-2">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400">PWA v1.2.5</span>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <p className="text-slate-500 font-bold">CONFIGURACIÓN:</p>
+                            <div className="bg-slate-950 p-2 rounded border border-slate-800 break-all text-blue-300">
+                                URL: {import.meta.env.VITE_APPS_SCRIPT_URL || 'Using config.ts URL'}
+                            </div>
+                            <div className="bg-slate-950 p-2 rounded border border-slate-800 text-cyan-300">
+                                Device ID: {localStorage.getItem('deviceId') || 'None'}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <p className="text-slate-500 font-bold">RESULTADOS:</p>
+                            <div className="flex space-x-2">
+                                <span className={`flex-1 p-1.5 rounded text-center font-bold ${connectionStatus === 'CONNECTED' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
+                                    HEALTH: {connectionStatus}
+                                </span>
+                                <span className={`flex-1 p-1.5 rounded text-center font-bold ${units.length > 0 ? 'bg-blue-900/50 text-blue-400' : 'bg-slate-800 text-slate-500'}`}>
+                                    AGENDA: {units.length}
+                                </span>
+                            </div>
+                            <div className="bg-slate-950 p-2 rounded border border-slate-800 text-[9px] h-20 overflow-auto">
+                                <span className="text-slate-500">Usuarios (first 3):</span><br />
+                                {units.slice(0, 3).map(u => u.inspectorId).join(', ') || 'N/A'}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Show Last Action if available */}
+                    <div className="space-y-2">
+                        <p className="text-slate-500 font-bold">ÚLTIMA ACCIÓN:</p>
+                        <div className="bg-black/40 p-3 rounded-lg border border-slate-800 overflow-auto max-h-40">
+                            {lastApiCall ? (
+                                <div className="space-y-1">
+                                    <p className="text-green-400 font-bold text-[9px] truncate">
+                                        {lastApiCall.endpoint}
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-2 text-[9px]">
+                                        <span className="text-slate-400 italic">{lastApiCall.timestamp}</span>
+                                        <span className="text-right font-bold text-white">Status: {lastApiCall.status || 'N/A'}</span>
+                                    </div>
+                                    <pre className="text-slate-300 text-[8px] mt-1 bg-slate-950 p-1.5 rounded border border-slate-800">
+                                        {JSON.stringify(lastApiCall.response, null, 2)}
+                                    </pre>
+                                </div>
+                            ) : (
+                                <p className="text-slate-500 italic">No hay acciones registradas.</p>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex space-x-2 pt-2">
+                        <button onClick={() => fetchData()} className="flex-1 bg-primary-600/20 text-primary-400 border border-primary-500/30 py-2 rounded-lg font-bold hover:bg-primary-600/30 transition-colors">
+                            Refrescar Agenda
+                        </button>
+                        <button onClick={() => window.location.reload()} className="flex-1 bg-slate-800 text-white py-2 rounded-lg font-bold hover:bg-slate-700 transition-colors">
+                            Forzar Recarga
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Debug Mode Info (Only in Dev) */}
             {import.meta.env.DEV && (() => {
@@ -219,7 +299,7 @@ const Dashboard: React.FC = () => {
                             const project = projects.find(p => p.id === unit.projectId);
                             const isGenerated = unit.isHandoverGenerated;
                             const isEnProceso = unit.procesoStatus === 'EN_PROCESO';
-                            const isRealizada = unit.procesoStatus === 'REALIZADA';
+                            const isRealizada = unit.procesoStatus === 'REALIZADO';
                             const isCancelada = unit.procesoStatus === 'CANCELADA';
                             const isFinalized = isRealizada || isCancelada;
 

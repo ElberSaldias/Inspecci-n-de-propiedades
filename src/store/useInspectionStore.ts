@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import Papa from 'papaparse';
 import type { Observation, ProcessType, Unit, Project } from '../types';
-import { isToday, parse, isValid, parseISO, addDays, isWithinInterval, startOfDay, endOfDay, format } from 'date-fns';
-import { APPS_SCRIPT_URL, PUBLISHED_CSV_URL } from '../config';
+import { isToday, isValid, addDays, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { APPS_SCRIPT_URL } from '../config';
 import { fetchJSON } from '../apiClient';
 
 interface InspectionState {
@@ -17,6 +16,7 @@ interface InspectionState {
     projects: Project[];
     isLoadingData: boolean;
     dataError: string | null;
+    connectionStatus: 'IDLE' | 'CHECKING' | 'CONNECTED' | 'ERROR';
 
     // Actions
     setInspectorRut: (rut: string | null) => void;
@@ -31,13 +31,23 @@ interface InspectionState {
     fetchData: () => Promise<void>;
     validateLogin: (input: string) => Promise<boolean>;
     submitInspection: (extra?: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; pdf_url?: string }>;
+    startProcess: (unit: Unit, processType: ProcessType) => Promise<{ ok: boolean; process_id?: string; error?: string }>;
+    getActaStatus: (unit: Unit) => Promise<{ ok: boolean; has_acta: boolean; pdf_url?: string; view_url?: string }>;
     getDailyAgenda: () => Unit[];
     getUpcomingDeliveries: () => Unit[];
     getProjectsFromAgenda: () => Project[];
     validateRut: (rut: string) => boolean;
-    connectionStatus: 'IDLE' | 'CHECKING' | 'CONNECTED' | 'ERROR';
     checkConnection: () => Promise<boolean>;
 }
+
+const getDeviceId = () => {
+    let id = localStorage.getItem('deviceId');
+    if (!id) {
+        id = `dev-${Math.random().toString(36).substr(2, 9)}-${Date.now()}`;
+        localStorage.setItem('deviceId', id);
+    }
+    return id;
+};
 
 export const useInspectionStore = create<InspectionState>((set, get) => ({
     inspectorRut: null,
@@ -53,7 +63,6 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     dataError: null,
     connectionStatus: 'IDLE',
 
-    // Helper for Chilean RUT validation
     validateRut: (rut: string) => {
         const cleanRut = rut.replace(/[^0-9kK]/g, '');
         if (cleanRut.length < 2) return false;
@@ -72,62 +81,40 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     },
 
     setInspectorRut: (rut: string | null) => set({ inspectorRut: rut }),
-
     setSelectedUnit: (unit: Unit | null) => set({ selectedUnit: unit }),
-
     updateSelectedUnit: (updates: Partial<Unit>) => set((state) => ({
         selectedUnit: state.selectedUnit ? { ...state.selectedUnit, ...updates } : null
     })),
-
     setProcessType: (type: ProcessType | null) => set({ processType: type }),
-
     addObservation: (obs: Omit<Observation, 'id'>) => set((state) => ({
         observations: [
             ...state.observations,
             { ...obs, id: Math.random().toString(36).substr(2, 9) }
         ]
     })),
-
     removeObservation: (id: string) => set((state) => ({
         observations: state.observations.filter(o => o.id !== id)
     })),
-
     updateObservationStatus: (id: string, status: Observation['status']) => set((state) => ({
-        observations: state.observations.map(o =>
-            o.id === id ? { ...o, status } : o
-        )
+        observations: state.observations.map(o => o.id === id ? { ...o, status } : o)
     })),
-
-    clearSession: () => set({
-        selectedUnit: null,
-        processType: null,
-        observations: []
-    }),
-
+    clearSession: () => set({ selectedUnit: null, processType: null, observations: [] }),
     logout: () => set({
-        inspectorRut: null,
-        inspectorName: null,
-        inspectorEmail: null,
-        inspectorRole: null,
-        selectedUnit: null,
-        processType: null,
-        observations: [],
-        units: [],
-        projects: [],
+        inspectorRut: null, inspectorName: null, inspectorEmail: null, inspectorRole: null,
+        selectedUnit: null, processType: null, observations: [], units: [], projects: [],
         connectionStatus: 'IDLE'
     }),
 
     checkConnection: async () => {
         set({ connectionStatus: 'CHECKING' });
         try {
-            // Reintentamos con un timestamp para evitar cache
             const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=health&t=${Date.now()}`);
             if (data.ok) {
                 set({ connectionStatus: 'CONNECTED' });
                 return true;
             }
-            throw new Error(data.message || 'Respuesta de estado inválida');
-        } catch (error) {
+            throw new Error(data.message || 'Error en health check');
+        } catch (error: any) {
             console.error('Health Check Failed:', error);
             set({ connectionStatus: 'ERROR' });
             return false;
@@ -135,260 +122,220 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     },
 
     validateLogin: async (input: string) => {
+        set({ isLoadingData: true, dataError: null });
         try {
-            const response = await fetch(`${PUBLISHED_CSV_URL}&t=${Date.now()}`, { cache: "no-store" });
-            if (!response.ok) throw new Error(`Error ${response.status} al validar login`);
-
-            const csvText = await response.text();
-            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=getUsuarios&t=${Date.now()}`);
+            if (!data.ok || !Array.isArray(data.data)) {
+                throw new Error("No se pudo obtener la lista de usuarios autorizados");
+            }
 
             const currentStr = input.trim().toLowerCase();
             const isEmailLogin = currentStr.includes('@');
             const normalizedRut = currentStr.replace(/[^0-9k]/g, '');
 
-            let matchedUser = null;
-            let realName = 'Usuario';
-            let realEmail = '';
-            let realRole = 'Inspector';
-
-            for (const user of parsed.data as any[]) {
-                const keys = Object.keys(user);
-                const getVal = (names: string[]) => {
-                    const key = keys.find(k => names.some(n => k.toLowerCase().trim().includes(n.toLowerCase())));
-                    return key ? (user[key] || '').toString().trim() : '';
-                };
-
-                const uEmail = getVal(['email']).toLowerCase();
-                const uRut = getVal(['rut', 'id']).toLowerCase().replace(/[^0-9k]/g, '');
-
-                if ((isEmailLogin && uEmail === currentStr) || (!isEmailLogin && uRut === normalizedRut)) {
-                    matchedUser = user;
-                    realName = getVal(['nombre', 'completo']) || 'Usuario';
-                    realEmail = getVal(['email']) || '';
-                    realRole = getVal(['rol']) || 'Inspector';
-                    break;
-                }
-            }
+            const matchedUser = data.data.find((u: any) => {
+                const uEmail = (u.id_inspector || u.email || "").toLowerCase().trim();
+                const uRut = (u.rut || u.id || "").toLowerCase().replace(/[^0-9k]/g, '');
+                return (isEmailLogin && uEmail === currentStr) || (!isEmailLogin && uRut === normalizedRut);
+            });
 
             if (matchedUser) {
                 set({
-                    inspectorRut: input.trim().toUpperCase(),
-                    inspectorName: realName,
-                    inspectorEmail: realEmail.trim().toLowerCase(),
-                    inspectorRole: realRole
+                    inspectorRut: (matchedUser.rut || input).trim().toUpperCase(),
+                    inspectorName: matchedUser.nombre || 'Inspector',
+                    inspectorEmail: (matchedUser.id_inspector || matchedUser.email || "").trim().toLowerCase(),
+                    inspectorRole: matchedUser.rol || 'Inspector',
+                    isLoadingData: false
                 });
                 return true;
             }
+
+            set({ dataError: "Usuario no autorizado", isLoadingData: false });
             return false;
-        } catch (error) {
+        } catch (error: any) {
             console.error("Login validation error:", error);
+            set({ dataError: error.message || "Error al validar acceso", isLoadingData: false });
             return false;
         }
     },
 
     fetchData: async () => {
+        const email = get().inspectorEmail;
+        if (!email) return;
+
         set({ isLoadingData: true, dataError: null });
         try {
-            const response = await fetch(`${PUBLISHED_CSV_URL}&t=${Date.now()}`, {
-                cache: "no-store",
-                headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
-            });
+            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=getAsignaciones&id_inspector=${encodeURIComponent(email)}&days=14&t=${Date.now()}`);
 
-            if (!response.ok) {
-                console.error(`[FetchData Error] Status: ${response.status} | URL: ${PUBLISHED_CSV_URL}`);
-                throw new Error(`No se pudo conectar con el servidor de datos (Spreadsheet). Status: ${response.status}`);
+            if (!data.ok || !Array.isArray(data.data)) {
+                throw new Error(data.message || "No se pudo obtener las asignaciones");
             }
 
-            const unitsCsvText = await response.text();
+            const parsedUnits: Unit[] = [];
+            const parsedProjects: Project[] = [];
+            const projectMap = new Map<string, Project>();
 
+            data.data.forEach((row: any) => {
+                const edificio = row.edificio || row.proyecto || 'Sin Edificio';
+                const direccion = row.direccion || '';
+                const departamento = String(row.departamento || row.depto || '');
+                const projectId = `proj-${edificio.replace(/\s+/g, '-').toLowerCase()}`;
 
-
-            Papa.parse(unitsCsvText, {
-                header: true,
-                skipEmptyLines: true,
-                complete: (results) => {
-                    const parsedUnits: Unit[] = [];
-                    const parsedProjects: Project[] = [];
-                    const projectMap = new Map<string, Project>();
-
-                    (results.data as any[]).forEach((row) => {
-                        const keys = Object.keys(row);
-                        const getVal = (names: string[]) => {
-                            const key = keys.find(k => names.includes(k.toLowerCase().trim()));
-                            return key ? (row[key] || '').toString().trim() : '';
-                        };
-
-                        const edificio = getVal(['edificio', 'proyecto']);
-                        const direccion = getVal(['direccion']);
-                        const departamento = getVal(['departamento', 'depto', 'unidad']);
-                        const name = edificio || 'Sin Edificio';
-                        const projectId = `proj-${name.replace(/\s+/g, '-').toLowerCase()}`;
-
-                        if (!projectMap.has(projectId)) {
-                            const newProject: Project = {
-                                id: projectId,
-                                name: name,
-                                address: direccion || '',
-                                status: 'ACTIVE'
-                            };
-                            projectMap.set(projectId, newProject);
-                            parsedProjects.push(newProject);
-                        }
-
-                        const rawTipo = getVal(['tipo_proceso', 'proceso']);
-                        let status: Unit['status'] = 'PENDING';
-                        if (rawTipo.toUpperCase().includes('PRE')) status = 'PRE_ENTREGA';
-                        else if (rawTipo.toUpperCase().includes('ENTREGA')) status = 'ENTREGADO';
-
-                        const unitId = `unit-${projectId}-${departamento}`;
-                        parsedUnits.push({
-                            id: unitId,
-                            projectId: projectId,
-                            number: departamento,
-                            ownerName: getVal(['cliente', 'propietario']),
-                            ownerRut: '',
-                            status: status,
-                            inspectorId: getVal(['id_inspector', 'inspector']),
-                            processTypeLabel: rawTipo,
-                            parking: getVal(['estacionamiento']),
-                            storage: getVal(['bodega']),
-                            projectAddress: direccion,
-                            activeState: getVal(['estado']),
-                            date: getVal(['fecha']),
-                            time: getVal(['hora']),
-                            isHandoverGenerated: getVal(['acta_status']).toUpperCase() === 'GENERADA',
-                            handoverUrl: getVal(['acta_url']) || getVal(['acta_pdf_url']) || undefined,
-                            handoverDate: getVal(['acta_updated_at']) || undefined,
-                            procesoStatus: getVal(['proceso_status', 'status_proceso', 'status']).toUpperCase() as Unit['procesoStatus'],
-                            procesoCompletedAt: getVal(['proceso_completed_at']),
-                            procesoCompletedBy: getVal(['proceso_completed_by']),
-                            procesoNotes: getVal(['proceso_notes'])
-                        });
-                    });
-
-                    set({
-                        units: parsedUnits,
-                        projects: parsedProjects,
-                        isLoadingData: false
-                    });
-                },
-                error: (error: Error) => {
-                    set({ dataError: error.message, isLoadingData: false });
+                if (!projectMap.has(projectId)) {
+                    const newProject: Project = {
+                        id: projectId,
+                        name: edificio,
+                        address: direccion,
+                        status: 'ACTIVE'
+                    };
+                    projectMap.set(projectId, newProject);
+                    parsedProjects.push(newProject);
                 }
+
+                const rawTipo = (row.tipo_proceso || '').toUpperCase();
+                let status: Unit['status'] = 'PENDING';
+                if (rawTipo.includes('PRE')) status = 'PRE_ENTREGA';
+                else if (rawTipo.includes('ENTREGA')) status = 'ENTREGADO';
+
+                parsedUnits.push({
+                    id: row.id || `unit-${projectId}-${departamento}`,
+                    projectId: projectId,
+                    number: departamento,
+                    ownerName: row.cliente || row.propietario || '',
+                    ownerRut: row.rut_cliente || '',
+                    status: status,
+                    inspectorId: row.id_inspector,
+                    processTypeLabel: row.tipo_proceso,
+                    parking: row.estacionamiento,
+                    storage: row.bodega,
+                    projectAddress: direccion,
+                    activeState: row.estado,
+                    date: row.fecha,
+                    time: row.hora,
+                    isHandoverGenerated: (row.acta_status || '').toUpperCase() === 'GENERADA',
+                    handoverUrl: row.acta_url || row.acta_pdf_url,
+                    handoverDate: row.acta_updated_at,
+                    procesoStatus: (row.proceso_status || '').trim().toUpperCase() as Unit['procesoStatus'],
+                    procesoCompletedAt: row.proceso_completed_at,
+                    procesoCompletedBy: row.proceso_completed_by,
+                    procesoNotes: row.proceso_notes,
+                    processId: row.process_id,
+                    updatedAt: row.updated_at,
+                    lastDeviceId: row.last_device_id
+                });
             });
-        } catch (error: unknown) {
-            if (error instanceof Error) {
-                set({ dataError: error.message || 'Error fetching data', isLoadingData: false });
-            } else {
-                set({ dataError: 'Error fetching data', isLoadingData: false });
+
+            set({
+                units: parsedUnits,
+                projects: parsedProjects,
+                isLoadingData: false
+            });
+        } catch (error: any) {
+            console.error("Fetch data error:", error);
+            set({ dataError: error.message || "Error al cargar agenda", isLoadingData: false });
+        }
+    },
+
+    startProcess: async (unit: Unit, processType: ProcessType) => {
+        const state = get();
+        const payload = {
+            id_inspector: state.inspectorEmail,
+            tipo_proceso: processType === 'PRE_ENTREGA' ? 'pre_entrega' : 'entrega',
+            departamento: unit.number,
+            fecha: unit.date,
+            hora: unit.time,
+            device_id: getDeviceId()
+        };
+
+        try {
+            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=startProcess`, {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            if (data.ok) {
+                set(state => ({
+                    units: state.units.map(u => u.id === unit.id ? { ...u, procesoStatus: 'EN_PROCESO', processId: data.process_id } : u)
+                }));
             }
+            return data;
+        } catch (error: any) {
+            console.error("Start Process Error:", error);
+            return { ok: false, error: error.message };
+        }
+    },
+
+    getActaStatus: async (unit: Unit) => {
+        const state = get();
+        try {
+            const url = `${APPS_SCRIPT_URL}?action=getActaStatus&id_inspector=${encodeURIComponent(state.inspectorEmail || "")}&departamento=${encodeURIComponent(unit.number)}&tipo_proceso=${encodeURIComponent(unit.processTypeLabel || "")}`;
+            const data = await fetchJSON(url);
+            return data;
+        } catch (error: any) {
+            console.error("Get Acta Status Error:", error);
+            return { ok: false, has_acta: false };
         }
     },
 
     submitInspection: async (extra?: Record<string, unknown>) => {
         const state = get();
-        if (!state.selectedUnit || !state.processType) {
-            return { ok: false, error: 'Faltan datos de la unidad o proceso' };
+        if (!state.selectedUnit) {
+            return { ok: false, error: 'Faltan datos de la unidad' };
         }
 
         const project = state.projects.find(p => p.id === state.selectedUnit?.projectId);
-
-        // Mapeo de recintos
         const ROOM_NAMES: Record<string, string> = {
             'r1': 'Acceso', 'r2': 'Cocina', 'r3': 'Estar Comedor', 'r4': 'Pasillo',
             'r5': 'Dormitorio 1', 'r6': 'Dormitorio 2', 'r7': 'Baño 1', 'r8': 'Baño 2',
             'r9': 'Terraza', 'r10': 'Bodega', 'r11': 'Estacionamiento'
         };
 
-        // Normalizar fecha y hora para coincidir exactamente con la hoja de cálculo (dd-mm-aaaa y hh:mm)
-        const normalizeDate = (dateStr: string) => {
-            if (!dateStr) return "";
-            // Si ya viene formateado dd-mm-yyyy lo respetamos
-            if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) return dateStr;
-
-            let d = parseISO(dateStr);
-            if (!isValid(d)) {
-                const formats = ['dd/MM/yyyy', 'dd-MM-yyyy', 'MM/dd/yyyy', 'yyyy/MM/dd', 'yyyy-MM-dd'];
-                for (const fmt of formats) {
-                    const temp = parse(dateStr, fmt, new Date());
-                    if (isValid(temp)) { d = temp; break; }
-                }
-            }
-            return isValid(d) ? format(d, 'dd-MM-yyyy') : dateStr;
-        };
-
-        const normalizeTime = (timeStr: string) => {
-            if (!timeStr) return "";
-            // Asegurar formato HH:mm eliminando segundos si existen
-            return timeStr.includes(':') ? timeStr.split(':').slice(0, 2).join(':') : timeStr;
-        };
-
-        const normalizedFecha = normalizeDate(state.selectedUnit.date || "");
-        const normalizedHora = normalizeTime(state.selectedUnit.time || "");
-
         const payload = {
-            // CRITERIOS DE BÚSQUEDA (Coincidencia exacta por 5 campos solicitados con trim preventivo)
-            id_inspector: (state.selectedUnit.inspectorId || "").trim(),
-            tipo_proceso: (state.selectedUnit.processTypeLabel || "").trim(),
-            departamento: (state.selectedUnit.number || "").trim(),
-            fecha: normalizedFecha.trim(),
-            hora: normalizedHora.trim(),
+            process_id: state.selectedUnit.processId,
+            id_inspector: state.inspectorEmail,
+            tipo_proceso: state.selectedUnit.processTypeLabel,
+            departamento: state.selectedUnit.number,
+            fecha: state.selectedUnit.date,
+            hora: state.selectedUnit.time,
+            device_id: getDeviceId(),
+            proceso_status: "REALIZADO",
+            updated_at: new Date().toISOString(),
 
-            // DATOS DE ACTUALIZACIÓN (Columna L y nuevas)
-            proceso_status: 'REALIZADA',
-            completed_at: new Date().toISOString(),
-            completed_by: state.inspectorEmail || state.inspectorRut || "Unknown",
-
-            // DATOS PARA GENERACIÓN DE ACTA (Compatibilidad con script actual)
-            tipo: state.processType === 'PRE_ENTREGA' ? 'PRE ENTREGA' : 'ENTREGA FINAL',
-            proyecto: project?.name || "Sin Proyecto",
-            depto: state.selectedUnit.number || "",
-            fecha_acta: new Date().toISOString().split("T")[0],
-            edificio_direccion: project?.address || state.selectedUnit.projectAddress || "",
-            comuna: "Santiago",
-            propietario: {
-                nombre: state.selectedUnit.ownerName || "",
-                rut: state.selectedUnit.ownerRut || "",
-                telefono: state.selectedUnit.ownerPhone || "",
-                email: state.selectedUnit.ownerEmail || ""
-            },
-            observaciones: state.observations.map((o, i) => ({
-                nro: i + 1,
-                recinto: ROOM_NAMES[o.roomId] || "Desconocido",
-                detalle: o.description
-            })),
-            firmas: extra?.firmas
+            pdf_data: {
+                tipo: state.processType === 'PRE_ENTREGA' ? 'PRE ENTREGA' : 'ENTREGA FINAL',
+                proyecto: project?.name || "Sin Proyecto",
+                depto: state.selectedUnit.number || "",
+                fecha_acta: new Date().toISOString().split("T")[0],
+                edificio_direccion: project?.address || state.selectedUnit.projectAddress || "",
+                comuna: "Santiago",
+                propietario: {
+                    nombre: state.selectedUnit.ownerName || "",
+                    rut: state.selectedUnit.ownerRut || "",
+                    telefono: state.selectedUnit.ownerPhone || "",
+                    email: state.selectedUnit.ownerEmail || ""
+                },
+                observaciones: state.observations.map((o, i) => ({
+                    nro: i + 1,
+                    recinto: ROOM_NAMES[o.roomId] || "Desconocido",
+                    detalle: o.description
+                })),
+                firmas: extra?.firmas
+            }
         };
-
-        // Logging de criterios para debugging
-        console.log("Iniciando UPDATE de estado en Sheets con criterios:", {
-            inspector: payload.id_inspector,
-            proceso: payload.tipo_proceso,
-            depto: payload.departamento,
-            fecha: payload.fecha,
-            hora: payload.hora
-        });
 
         try {
-            const data = await fetchJSON(APPS_SCRIPT_URL, {
+            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=completeProcess`, {
                 method: "POST",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(payload)
             });
 
             if (data.ok) {
                 await get().fetchData();
-            } else {
-                const errorDetail = `Depto ${payload.departamento}, ${payload.fecha} ${payload.hora}, ${payload.tipo_proceso}`;
-                alert(`No se encontró el agendamiento para actualizar estado (revisar fecha/hora).\n\nCriterios usados:\n${errorDetail}\nInspector: ${payload.id_inspector}`);
-                console.warn("Falla en actualización de fila:", payload);
             }
 
             return data;
         } catch (error: any) {
-            console.error("Webhook POST Error:", error);
-            const message = error.message || 'Error de red al intentar contactar a Google Apps Script';
-            return { ok: false, error: message };
+            console.error("Complete Process Error:", error);
+            return { ok: false, error: error.message };
         }
     },
 
@@ -396,41 +343,20 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         const state = get();
         const { units, inspectorEmail } = state;
         if (!inspectorEmail) return [];
-
         const currentEmail = inspectorEmail.toLowerCase().trim();
 
         return units.filter(u => {
-            // 1. Exact match by email (id_inspector)
-            const rowId = (u.inspectorId || '').toLowerCase().trim();
-            if (rowId !== currentEmail) return false;
-
-            // 2. Active state
-            const isActive = (u.activeState || '').toLowerCase().trim() === 'activo';
-            if (!isActive) return false;
-
-            // 3. Date check (Today)
+            if ((u.inspectorId || '').toLowerCase().trim() !== currentEmail) return false;
+            if ((u.activeState || '').toLowerCase().trim() !== 'activo') return false;
             if (!u.date) return false;
-            const dateStr = u.date.trim();
-
-            // Manual parsing dd-mm-yyyy or yyyy-mm-dd
-            const parts = dateStr.split(/[-/]/);
+            const parts = u.date.trim().split(/[-/]/);
             if (parts.length !== 3) return false;
-
             let d, m, y;
-            if (parts[2].length === 4) { // dd-mm-yyyy
-                d = parseInt(parts[0], 10);
-                m = parseInt(parts[1], 10) - 1;
-                y = parseInt(parts[2], 10);
-            } else if (parts[0].length === 4) { // yyyy-mm-dd
-                y = parseInt(parts[0], 10);
-                m = parseInt(parts[1], 10) - 1;
-                d = parseInt(parts[2], 10);
-            } else return false;
-
+            if (parts[2].length === 4) { d = parseInt(parts[0], 10); m = parseInt(parts[1], 10) - 1; y = parseInt(parts[2], 10); }
+            else if (parts[0].length === 4) { y = parseInt(parts[0], 10); m = parseInt(parts[1], 10) - 1; d = parseInt(parts[2], 10); }
+            else return false;
             const parsedDate = new Date(y, m, d);
-            if (!isValid(parsedDate)) return false;
-
-            return isToday(parsedDate);
+            return isValid(parsedDate) && isToday(parsedDate);
         }).sort((a, b) => {
             const timeA = (a.time || '00:00').split(':').map(s => parseInt(s, 10));
             const timeB = (b.time || '00:00').split(':').map(s => parseInt(s, 10));
@@ -442,41 +368,22 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         const state = get();
         const { units, inspectorEmail } = state;
         if (!inspectorEmail) return [];
-
         const currentEmail = inspectorEmail.toLowerCase().trim();
         const nowAtStart = startOfDay(new Date());
         const endDate = endOfDay(addDays(nowAtStart, 14));
 
         return units.filter(u => {
-            // 1. Exact match by email (id_inspector)
-            const rowId = (u.inspectorId || '').toLowerCase().trim();
-            if (rowId !== currentEmail) return false;
-
-            // 2. Active state
-            const isActive = (u.activeState || '').toLowerCase().trim() === 'activo';
-            if (!isActive) return false;
-
-            // 3. Date check (Within range)
+            if ((u.inspectorId || '').toLowerCase().trim() !== currentEmail) return false;
+            if ((u.activeState || '').toLowerCase().trim() !== 'activo') return false;
             if (!u.date) return false;
-            const dateStr = u.date.trim();
-            const parts = dateStr.split(/[-/]/);
+            const parts = u.date.trim().split(/[-/]/);
             if (parts.length !== 3) return false;
-
             let d, m, y;
-            if (parts[2].length === 4) { // dd-mm-yyyy
-                d = parseInt(parts[0], 10);
-                m = parseInt(parts[1], 10) - 1;
-                y = parseInt(parts[2], 10);
-            } else if (parts[0].length === 4) { // yyyy-mm-dd
-                y = parseInt(parts[0], 10);
-                m = parseInt(parts[1], 10) - 1;
-                d = parseInt(parts[2], 10);
-            } else return false;
-
+            if (parts[2].length === 4) { d = parseInt(parts[0], 10); m = parseInt(parts[1], 10) - 1; y = parseInt(parts[2], 10); }
+            else if (parts[0].length === 4) { y = parseInt(parts[0], 10); m = parseInt(parts[1], 10) - 1; d = parseInt(parts[2], 10); }
+            else return false;
             const parsedDate = new Date(y, m, d);
-            if (!isValid(parsedDate)) return false;
-
-            return isWithinInterval(parsedDate, { start: nowAtStart, end: endDate });
+            return isValid(parsedDate) && isWithinInterval(parsedDate, { start: nowAtStart, end: endDate });
         }).sort((a, b) => {
             const getSortTime = (u: Unit) => {
                 const parts = (u.date || '').trim().split(/[-/]/);

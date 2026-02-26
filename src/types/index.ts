@@ -36,10 +36,13 @@ export interface Unit {
     handoverDate?: string;
 
     // Process status fields
-    procesoStatus?: 'PROGRAMADA' | 'EN_PROCESO' | 'REALIZADA' | 'CANCELADA' | '';
+    procesoStatus?: 'PROGRAMADA' | 'EN_PROCESO' | 'REALIZADO' | 'ACTA_GENERADA' | 'CANCELADA' | '';
     procesoCompletedAt?: string;
     procesoCompletedBy?: string;
     procesoNotes?: string;
+    processId?: string;      // process_id
+    updatedAt?: string;      // updated_at
+    lastDeviceId?: string;   // last_device_id
 }
 
 export interface Room {

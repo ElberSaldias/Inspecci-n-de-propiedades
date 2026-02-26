@@ -19,21 +19,23 @@ const IdentifyUnit: React.FC = () => {
         return projects.find(p => p.id === unit.projectId);
     };
 
-    const handleSelectUnit = (unit: Unit) => {
-        if (unit.isHandoverGenerated) {
-            alert('Esta unidad ya cuenta con acta generada. Ver detalle en el Dashboard.');
-            return;
-        }
-
+    const handleSelectUnit = async (unit: Unit) => {
         const store = useInspectionStore.getState();
-        store.setSelectedUnit(unit);
-
-        // Auto-set process type based on label
         const type: ProcessType = (unit.processTypeLabel || '').toUpperCase().includes('PRE')
             ? 'PRE_ENTREGA'
             : 'ENTREGA_FINAL';
-        store.setProcessType(type);
 
+        // If it's a new process, notify server
+        if (!unit.procesoStatus || unit.procesoStatus === 'PROGRAMADA') {
+            const res = await useInspectionStore.getState().startProcess(unit, type);
+            if (!res.ok) {
+                alert(`No se pudo iniciar el proceso: ${res.error || 'Error desconocido'}`);
+                return;
+            }
+        }
+
+        store.setSelectedUnit(unit);
+        store.setProcessType(type);
         navigate('/process');
     };
 
@@ -63,7 +65,7 @@ const IdentifyUnit: React.FC = () => {
                             const project = getProjectForUnit(unit);
                             const isGenerated = unit.isHandoverGenerated;
                             const isEnProceso = unit.procesoStatus === 'EN_PROCESO';
-                            const isRealizada = unit.procesoStatus === 'REALIZADA';
+                            const isRealizada = unit.procesoStatus === 'REALIZADO';
                             const isCancelada = unit.procesoStatus === 'CANCELADA';
                             const isBlocked = isGenerated || isRealizada || isCancelada;
 
