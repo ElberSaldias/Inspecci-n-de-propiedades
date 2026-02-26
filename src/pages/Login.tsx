@@ -77,14 +77,14 @@ const Login: React.FC = () => {
             });
 
             if (assignmentsResponse && assignmentsResponse.ok && Array.isArray(assignmentsResponse.data)) {
-                console.log("Parsing assignments...");
-                const parsedUnits: Unit[] = assignmentsResponse.data.map((row: Record<string, unknown>) => ({
-                    id: row.id || `unit-${row.departamento}`,
+                console.log("Parsing assignments with new columns...");
+                const parsedUnits: Unit[] = assignmentsResponse.data.map((row: any) => ({
+                    id: `unit-${row.edificio}-${row.departamento}`,
                     projectId: row.edificio || 'PROYECTO',
-                    number: String(row.departamento || row.depto || ''),
-                    ownerName: row.cliente || row.propietario || 'Cliente',
-                    ownerRut: row.rut_cliente || '',
-                    status: 'PENDING',
+                    number: String(row.departamento || ''),
+                    ownerName: row.cliente || 'Cliente',
+                    ownerRut: '', // No presente en la nueva lista pero requerido por tipo
+                    status: row.estado === 'Realizada' ? 'COMPLETED' : 'PENDING',
                     date: row.fecha,
                     time: row.hora,
                     processTypeLabel: row.tipo_proceso,
@@ -97,7 +97,8 @@ const Login: React.FC = () => {
                     bodega: row.bodega
                 }));
                 setUnits(parsedUnits);
-            } else {
+            }
+            else {
                 console.log("No assignments found or invalid response format, continuing with empty list.");
                 setUnits([]);
             }
