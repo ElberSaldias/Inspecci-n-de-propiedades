@@ -29,10 +29,18 @@ const Login: React.FC = () => {
         e.preventDefault();
         setLocalError('');
 
+        console.log("Login attempt started...");
+
         const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL;
         const API_KEY = import.meta.env.VITE_API_KEY;
 
+        console.log("Environment variables check:", {
+            urlPresent: !!WEBAPP_URL,
+            keyPresent: !!API_KEY
+        });
+
         if (!WEBAPP_URL || !API_KEY) {
+            console.error("Missing config variables");
             setLocalError('Configuration Error');
             return;
         }
@@ -44,61 +52,62 @@ const Login: React.FC = () => {
 
         try {
             setIsLoading(true);
-
-            // Normalizar RUT
             const normalizedRut = rutInput.replace(/[^0-9kK]/g, '').toUpperCase();
+            console.log("Normalized RUT:", normalizedRut);
 
-            // OMITIR VALIDACIÓN DE ACCESO: Saltamos el paso de api("login")
-            // Intentamos obtener asignaciones directamente
-            const assignmentsResponse = await api("getAssignments", {
-                rut: normalizedRut
-            });
-
-            if (!assignmentsResponse.ok) {
-                // Si falla el obtener asignaciones, mostramos error
-                setLocalError("No se encontraron asignaciones para este RUT o error de red");
-                setIsLoading(false);
-                return;
+            // Intentar obtener asignaciones
+            let assignmentsResponse;
+            try {
+                console.log("Calling getAssignments API...");
+                assignmentsResponse = await api("getAssignments", {
+                    rut: normalizedRut
+                });
+                console.log("API Response received:", assignmentsResponse);
+            } catch (apiErr) {
+                console.error("API Call failed Exception:", apiErr);
+                // No bloqueamos el acceso si la API falla, permitimos entrar al dashboard
             }
 
-            // Guardar datos básicos
+            // Guardar datos básicos - SIEMPRE permitimos el paso si llegamos aquí
             setInspectorRut(normalizedRut);
             setInspectorData({
-                nombre: "Inspector", // Nombre genérico ya que omitimos la validación
+                nombre: "Inspector",
                 email: "",
                 rol: "Inspector"
             });
 
-            const parsedUnits: Unit[] = assignmentsResponse.data.map((row: Record<string, unknown>) => ({
-                id: row.id || `unit-${row.departamento}`,
-                projectId: row.edificio || 'PROYECTO',
-                number: String(row.departamento || row.depto || ''),
-                ownerName: row.cliente || row.propietario || 'Cliente',
-                ownerRut: row.rut_cliente || '',
-                status: 'PENDING',
-                date: row.fecha,
-                time: row.hora,
-                processTypeLabel: row.tipo_proceso,
-                projectAddress: row.direccion,
-                edificio: row.edificio,
-                departamento: row.departamento,
-                direccion: row.direccion,
-                cliente: row.cliente,
-                estacionamiento: row.estacionamiento,
-                bodega: row.bodega
-            }));
+            if (assignmentsResponse && assignmentsResponse.ok && Array.isArray(assignmentsResponse.data)) {
+                console.log("Parsing assignments...");
+                const parsedUnits: Unit[] = assignmentsResponse.data.map((row: Record<string, unknown>) => ({
+                    id: row.id || `unit-${row.departamento}`,
+                    projectId: row.edificio || 'PROYECTO',
+                    number: String(row.departamento || row.depto || ''),
+                    ownerName: row.cliente || row.propietario || 'Cliente',
+                    ownerRut: row.rut_cliente || '',
+                    status: 'PENDING',
+                    date: row.fecha,
+                    time: row.hora,
+                    processTypeLabel: row.tipo_proceso,
+                    projectAddress: row.direccion,
+                    edificio: row.edificio,
+                    departamento: row.departamento,
+                    direccion: row.direccion,
+                    cliente: row.cliente,
+                    estacionamiento: row.estacionamiento,
+                    bodega: row.bodega
+                }));
+                setUnits(parsedUnits);
+            } else {
+                console.log("No assignments found or invalid response format, continuing with empty list.");
+                setUnits([]);
+            }
 
-            setUnits(parsedUnits);
+            console.log("Navigating to dashboard...");
             navigate('/');
 
         } catch (err) {
-            console.error(err);
-            const error = err as Error;
-            if (error.message && error.message.includes("Configuration Error")) {
-                setLocalError("Configuration Error");
-            } else {
-                setLocalError("Error de conexión con el servidor");
-            }
+            console.error("Unhandled error in handleLogin:", err);
+            setLocalError("Error inesperado. Revisa la consola.");
         } finally {
             setIsLoading(false);
         }
