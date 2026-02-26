@@ -10,7 +10,6 @@ import { lastApiCall } from '../apiClient';
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
     const inspectorEmail = useInspectionStore((state) => state.inspectorEmail);
-    const inspectorRut = useInspectionStore((state) => state.inspectorRut);
     const inspectorName = useInspectionStore((state) => state.inspectorName);
     const projects = useInspectionStore((state) => state.projects);
     const units = useInspectionStore((state) => state.units);
@@ -42,16 +41,16 @@ const Dashboard: React.FC = () => {
     let sectionTitle = 'Próximos procesos (14 días)';
 
     if (countTotal === 0) {
-        bannerSubtitle = 'No tienes procesos programados en los próximos 14 días.';
+        bannerSubtitle = 'No tienes procesos programados';
         sectionTitle = 'Próximas entregas (14 días)';
     } else if (countPre > 0 && countEnt === 0) {
-        bannerSubtitle = `Tienes ${countPre} pre-entrega${countPre !== 1 ? 's' : ''} programadas en los próximos 14 días.`;
+        bannerSubtitle = `${countPre} pre-entrega${countPre !== 1 ? 's' : ''} programadas`;
         sectionTitle = 'Próximas pre-entregas (14 días)';
     } else if (countEnt > 0 && countPre === 0) {
-        bannerSubtitle = `Tienes ${countEnt} entrega${countEnt !== 1 ? 's' : ''} programadas en los próximos 14 días.`;
+        bannerSubtitle = `${countEnt} entrega${countEnt !== 1 ? 's' : ''} programadas`;
         sectionTitle = 'Próximas entregas (14 días)';
     } else {
-        bannerSubtitle = `Tienes ${countTotal} procesos programados en los próximos 14 días.`;
+        bannerSubtitle = `${countTotal} procesos programados`;
         sectionTitle = 'Próximos procesos (14 días)';
     }
 
@@ -119,7 +118,7 @@ const Dashboard: React.FC = () => {
                         <Calendar size={32} />
                     </div>
                     <p className="font-bold text-lg mb-2">Error de conexión</p>
-                    <p className="text-sm text-red-500 mb-6">No se pudo conectar con Google Sheets. Verifica la URL o permisos.</p>
+                    <p className="text-sm text-red-500 mb-6">No se pudo conectar con el servidor.</p>
                     <button
                         onClick={() => fetchData()}
                         className="w-full bg-red-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-red-700 transition-colors shadow-lg shadow-red-200"
@@ -136,9 +135,9 @@ const Dashboard: React.FC = () => {
         <div className="flex flex-col space-y-6 animate-in fade-in duration-300">
             <div className="bg-primary-600 text-white rounded-2xl p-6 shadow-md relative overflow-hidden">
                 <div className="relative z-10">
-                    <h1 className="text-2xl font-bold mb-1">Hola, {inspectorName || inspectorEmail || inspectorRut}</h1>
-                    <p className="text-primary-100 font-medium">
-                        {bannerSubtitle}
+                    <h1 className="text-2xl font-bold mb-1">{sectionTitle}</h1>
+                    <p className="text-primary-100 font-medium italic">
+                        Hola, {inspectorName || inspectorEmail} · {bannerSubtitle}
                     </p>
                 </div>
 
@@ -204,8 +203,8 @@ const Dashboard: React.FC = () => {
                                 </span>
                             </div>
                             <div className="bg-slate-950 p-2 rounded border border-slate-800 text-[9px] h-20 overflow-auto">
-                                <span className="text-slate-500">Usuarios (first 3):</span><br />
-                                {units.slice(0, 3).map(u => u.inspectorId).join(', ') || 'N/A'}
+                                <span className="text-slate-500">Inspectores asignados:</span><br />
+                                {Array.from(new Set(units.map(u => u.inspectorId))).join(', ') || 'N/A'}
                             </div>
                         </div>
                     </div>
@@ -233,19 +232,6 @@ const Dashboard: React.FC = () => {
                         </div>
                     </div>
 
-                    {lastApiCall?.response?.debug && (
-                        <div className="bg-amber-950/30 border border-amber-500/30 p-3 rounded-lg space-y-2">
-                            <p className="text-amber-400 font-bold text-[10px] uppercase">Backend Debug Tracer:</p>
-                            <div className="grid grid-cols-2 gap-2 text-[9px] text-amber-200/70">
-                                <div>Row Match: <span className="text-amber-400">{lastApiCall.response.debug.rowIndex || 'Not Found'}</span></div>
-                                <div>Matches: <span className="text-amber-400">{lastApiCall.response.debug.matchesCount}</span></div>
-                            </div>
-                            <pre className="text-[8px] text-amber-500 font-mono">
-                                {JSON.stringify(lastApiCall.response.debug.target, null, 2)}
-                            </pre>
-                        </div>
-                    )}
-
                     <div className="flex space-x-2 pt-2">
                         <button onClick={() => fetchData()} className="flex-1 bg-primary-600/20 text-primary-400 border border-primary-500/30 py-2 rounded-lg font-bold hover:bg-primary-600/30 transition-colors">
                             Refrescar Agenda
@@ -256,39 +242,6 @@ const Dashboard: React.FC = () => {
                     </div>
                 </div>
             )}
-
-            {/* Debug Mode Info (Only in Dev) */}
-            {import.meta.env.DEV && (() => {
-                const currentEmail = (inspectorEmail || '').toLowerCase().trim();
-                const afterInspector = units.filter(u => (u.inspectorId || '').toLowerCase().trim() === currentEmail);
-                const uniqueInspectors = Array.from(new Set(units.map(u => (u.inspectorId || 'VACÍO').trim()))).sort();
-
-                return (
-                    <div className="bg-slate-900 text-slate-300 p-4 rounded-2xl text-[10px] font-mono space-y-2 border border-slate-700 shadow-xl">
-                        <div className="flex justify-between border-b border-slate-800 pb-1">
-                            <span className="text-amber-400 font-bold">DEBUG PANEL</span>
-                            <span className="text-slate-500">v1.2.0-strict</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                            <div>User: <span className="text-white">{inspectorName || 'No Name'}</span></div>
-                            <div>Email: <span className="text-white">{inspectorEmail}</span></div>
-                            <div>Rows Total: <span className="text-cyan-400">{units.length}</span></div>
-                            <div>Match Email: <span className="text-cyan-400">{afterInspector.length}</span></div>
-                            <div>Final List (14d): <span className="text-green-400">{upcomingDeliveries.length}</span></div>
-                        </div>
-                        <div className="pt-2">
-                            <div className="text-slate-500 mb-1 font-bold">Inspectores en Sheet ({uniqueInspectors.length}):</div>
-                            <div className="flex flex-wrap gap-1">
-                                {uniqueInspectors.map((id, i) => (
-                                    <span key={i} className={`px-1.5 py-0.5 rounded ${id.toLowerCase() === currentEmail ? 'bg-green-900 text-green-200' : 'bg-slate-800'}`}>
-                                        {id}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
 
             <div className="space-y-4">
                 <h2 className="text-lg font-bold text-slate-800 flex items-center">

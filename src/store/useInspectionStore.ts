@@ -113,8 +113,8 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 set({ connectionStatus: 'CONNECTED' });
                 return true;
             }
-            throw new Error(data.message || 'Error en health check');
-        } catch (error: any) {
+            throw new Error(data.message || 'Sin conexión con base de datos');
+        } catch (error: unknown) {
             console.error('Health Check Failed:', error);
             set({ connectionStatus: 'ERROR' });
             return false;
@@ -124,37 +124,33 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     validateLogin: async (input: string) => {
         set({ isLoadingData: true, dataError: null });
         try {
-            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=getUsuarios&t=${Date.now()}`);
-            if (!data.ok || !Array.isArray(data.data)) {
-                throw new Error("No se pudo obtener la lista de usuarios autorizados");
-            }
-
-            const currentStr = input.trim().toLowerCase();
-            const isEmailLogin = currentStr.includes('@');
-            const normalizedRut = currentStr.replace(/[^0-9k]/g, '');
-
-            const matchedUser = data.data.find((u: any) => {
-                const uEmail = (u.id_inspector || u.email || "").toLowerCase().trim();
-                const uRut = (u.rut || u.id || "").toLowerCase().replace(/[^0-9k]/g, '');
-                return (isEmailLogin && uEmail === currentStr) || (!isEmailLogin && uRut === normalizedRut);
+            const normalizedEmail = input.trim().toLowerCase();
+            const data = await fetchJSON(APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'login',
+                    email: normalizedEmail
+                })
             });
 
-            if (matchedUser) {
+            if (data.ok && data.data) {
+                const user = data.data as { rut?: string; id?: string; nombre?: string; rol?: string };
                 set({
-                    inspectorRut: (matchedUser.rut || input).trim().toUpperCase(),
-                    inspectorName: matchedUser.nombre || 'Inspector',
-                    inspectorEmail: (matchedUser.id_inspector || matchedUser.email || "").trim().toLowerCase(),
-                    inspectorRole: matchedUser.rol || 'Inspector',
+                    inspectorRut: (user.rut || user.id || "").trim().toUpperCase(),
+                    inspectorName: user.nombre || 'Inspector',
+                    inspectorEmail: normalizedEmail,
+                    inspectorRole: user.rol || 'Inspector',
                     isLoadingData: false
                 });
                 return true;
             }
 
-            set({ dataError: "Usuario no autorizado", isLoadingData: false });
+            set({ dataError: "Acceso denegado: Usuario no autorizado", isLoadingData: false });
             return false;
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : "Error al validar acceso";
             console.error("Login validation error:", error);
-            set({ dataError: error.message || "Error al validar acceso", isLoadingData: false });
+            set({ dataError: errorMessage, isLoadingData: false });
             return false;
         }
     },
@@ -165,7 +161,19 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
 
         set({ isLoadingData: true, dataError: null });
         try {
-            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=getAsignaciones&id_inspector=${encodeURIComponent(email)}&days=14&t=${Date.now()}`);
+            // Optimización: Verificar salud de los 3 libros antes de cargar agenda
+            const isHealthy = await get().checkConnection();
+            if (!isHealthy) {
+                throw new Error("Sin conexión con base de datos");
+            }
+
+            const data = await fetchJSON(APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'getAssignments',
+                    email: email
+                })
+            });
 
             if (!data.ok || !Array.isArray(data.data)) {
                 throw new Error(data.message || "No se pudo obtener las asignaciones");
@@ -175,9 +183,9 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             const parsedProjects: Project[] = [];
             const projectMap = new Map<string, Project>();
 
-            data.data.forEach((row: any) => {
-                const edificio = row.edificio || row.proyecto || 'Sin Edificio';
-                const direccion = row.direccion || '';
+            (data.data as Record<string, unknown>[]).forEach((row) => {
+                const edificio = (row.edificio as string) || (row.proyecto as string) || 'Sin Edificio';
+                const direccion = (row.direccion as string) || '';
                 const departamento = String(row.departamento || row.depto || '');
                 const projectId = `proj-${edificio.replace(/\s+/g, '-').toLowerCase()}`;
 
@@ -192,36 +200,36 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                     parsedProjects.push(newProject);
                 }
 
-                const rawTipo = (row.tipo_proceso || '').toUpperCase();
+                const rawTipo = String(row.tipo_proceso || '').toUpperCase();
                 let status: Unit['status'] = 'PENDING';
                 if (rawTipo.includes('PRE')) status = 'PRE_ENTREGA';
                 else if (rawTipo.includes('ENTREGA')) status = 'ENTREGADO';
 
                 parsedUnits.push({
-                    id: row.id || `unit-${projectId}-${departamento}`,
+                    id: (row.id as string) || `unit-${projectId}-${departamento}`,
                     projectId: projectId,
                     number: departamento,
-                    ownerName: row.cliente || row.propietario || '',
-                    ownerRut: row.rut_cliente || '',
+                    ownerName: (row.cliente as string) || (row.propietario as string) || '',
+                    ownerRut: (row.rut_cliente as string) || '',
                     status: status,
-                    inspectorId: row.id_inspector,
-                    processTypeLabel: row.tipo_proceso,
-                    parking: row.estacionamiento,
-                    storage: row.bodega,
+                    inspectorId: (row.id_inspector as string),
+                    processTypeLabel: (row.tipo_proceso as string),
+                    parking: (row.estacionamiento as string),
+                    storage: (row.bodega as string),
                     projectAddress: direccion,
-                    activeState: row.estado,
-                    date: row.fecha,
-                    time: row.hora,
-                    isHandoverGenerated: (row.acta_status || '').toUpperCase() === 'GENERADA',
-                    handoverUrl: row.acta_url || row.acta_pdf_url,
-                    handoverDate: row.acta_updated_at,
-                    procesoStatus: (row.proceso_status || '').trim().toUpperCase() as Unit['procesoStatus'],
-                    procesoCompletedAt: row.proceso_completed_at,
-                    procesoCompletedBy: row.proceso_completed_by,
-                    procesoNotes: row.proceso_notes,
-                    processId: row.process_id,
-                    updatedAt: row.updated_at,
-                    lastDeviceId: row.last_device_id
+                    activeState: (row.estado as string),
+                    date: (row.fecha as string),
+                    time: (row.hora as string),
+                    isHandoverGenerated: String(row.acta_status || '').toUpperCase() === 'GENERADA',
+                    handoverUrl: (row.acta_url as string) || (row.acta_pdf_url as string),
+                    handoverDate: (row.acta_updated_at as string),
+                    procesoStatus: String(row.proceso_status || '').trim().toUpperCase() as Unit['procesoStatus'],
+                    procesoCompletedAt: (row.proceso_completed_at as string),
+                    procesoCompletedBy: (row.proceso_completed_by as string),
+                    procesoNotes: (row.proceso_notes as string),
+                    processId: (row.process_id as string),
+                    updatedAt: (row.updated_at as string),
+                    lastDeviceId: (row.last_device_id as string)
                 });
             });
 
@@ -230,26 +238,28 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 projects: parsedProjects,
                 isLoadingData: false
             });
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : "Error al cargar agenda";
             console.error("Fetch data error:", error);
-            set({ dataError: error.message || "Error al cargar agenda", isLoadingData: false });
+            set({ dataError: errorMessage, isLoadingData: false });
         }
     },
 
     startProcess: async (unit: Unit, processType: ProcessType) => {
         const state = get();
         const payload = {
-            id_inspector: (state.inspectorEmail || "").toLowerCase().trim(),
-            tipo_proceso: unit.processTypeLabel, // Raw value from sheet
-            tipo_proceso_normalized: processType === 'PRE_ENTREGA' ? 'pre_entrega' : 'entrega',
+            action: 'startProcess',
+            email: state.inspectorEmail,
             departamento: String(unit.number),
             fecha: unit.date,
             hora: unit.time,
-            device_id: getDeviceId()
+            device_id: getDeviceId(),
+            tipo_proceso: unit.processTypeLabel,
+            tipo_proceso_normalized: processType === 'PRE_ENTREGA' ? 'pre_entrega' : 'entrega'
         };
 
         try {
-            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=startProcess`, {
+            const data = await fetchJSON(APPS_SCRIPT_URL, {
                 method: "POST",
                 body: JSON.stringify(payload)
             });
@@ -259,9 +269,10 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 }));
             }
             return data;
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : "Error al iniciar proceso";
             console.error("Start Process Error:", error);
-            return { ok: false, error: error.message };
+            return { ok: false, error: errorMessage };
         }
     },
 
@@ -271,7 +282,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             const url = `${APPS_SCRIPT_URL}?action=getActaStatus&id_inspector=${encodeURIComponent((state.inspectorEmail || "").toLowerCase().trim())}&departamento=${encodeURIComponent(unit.number)}&tipo_proceso=${encodeURIComponent(unit.processTypeLabel || "")}`;
             const data = await fetchJSON(url);
             return data;
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Get Acta Status Error:", error);
             return { ok: false, has_acta: false };
         }
@@ -291,12 +302,12 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         };
 
         const payload = {
-            process_id: state.selectedUnit.processId,
-            id_inspector: (state.inspectorEmail || "").toLowerCase().trim(),
-            tipo_proceso: state.selectedUnit.processTypeLabel,
+            action: "completeProcess",
+            email: state.inspectorEmail,
             departamento: String(state.selectedUnit.number),
             fecha: state.selectedUnit.date,
             hora: state.selectedUnit.time,
+            process_id: state.selectedUnit.processId,
             device_id: getDeviceId(),
             proceso_status: "REALIZADO",
             updated_at: new Date().toISOString(),
@@ -324,7 +335,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         };
 
         try {
-            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=completeProcess`, {
+            const data = await fetchJSON(APPS_SCRIPT_URL, {
                 method: "POST",
                 body: JSON.stringify(payload)
             });
@@ -334,9 +345,10 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             }
 
             return data;
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : "Error al completar proceso";
             console.error("Complete Process Error:", error);
-            return { ok: false, error: error.message };
+            return { ok: false, error: errorMessage };
         }
     },
 
