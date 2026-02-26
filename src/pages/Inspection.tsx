@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInspectionStore } from '../store/useInspectionStore';
-import { standardRooms } from '../data/mockData';
+import { standardRooms } from '../data/constants';
 import { Plus, Camera, X, ClipboardList } from 'lucide-react';
 import clsx from 'clsx';
 

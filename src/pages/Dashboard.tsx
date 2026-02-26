@@ -156,7 +156,7 @@ const Dashboard: React.FC = () => {
                     <span className="text-xs font-bold text-slate-600">
                         {connectionStatus === 'CONNECTED' ? 'Conectado a Google Cloud' :
                             connectionStatus === 'CHECKING' ? 'Verificando...' :
-                                connectionStatus === 'ERROR' ? 'Sin conexión' : 'Estado desconocido'}
+                                connectionStatus === 'ERROR' ? 'Sin conexión con base de datos' : 'Estado desconocido'}
                     </span>
                 </div>
                 <button
@@ -349,7 +349,7 @@ const Dashboard: React.FC = () => {
                                             disabled
                                             className="mt-4 w-full bg-slate-100 text-slate-400 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center space-x-2 cursor-not-allowed shadow-none"
                                         >
-                                            <span>{isRealizada ? 'Proceso realizado' : 'Proceso cancelado'}</span>
+                                            <span>{isRealizada ? 'PROCESO REALIZADO' : 'Proceso cancelado'}</span>
                                             {isRealizada && <CheckCircle size={18} />}
                                         </button>
                                     ) : (

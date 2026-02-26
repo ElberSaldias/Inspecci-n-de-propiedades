@@ -124,28 +124,30 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     validateLogin: async (input: string) => {
         set({ isLoadingData: true, dataError: null });
         try {
-            const normalizedEmail = input.trim().toLowerCase();
+            // Limpiar RUT (solo números y K)
+            const normalizedRut = input.trim().replace(/[^0-9kK]/g, '').toUpperCase();
+
             const data = await fetchJSON(APPS_SCRIPT_URL, {
                 method: 'POST',
                 body: JSON.stringify({
                     action: 'login',
-                    email: normalizedEmail
+                    rut: normalizedRut
                 })
             });
 
-            if (data.ok && data.data) {
-                const user = data.data as { rut?: string; id?: string; nombre?: string; rol?: string };
+            if (data.ok && data.user) {
+                const user = data.user;
                 set({
-                    inspectorRut: (user.rut || user.id || "").trim().toUpperCase(),
+                    inspectorRut: normalizedRut,
                     inspectorName: user.nombre || 'Inspector',
-                    inspectorEmail: normalizedEmail,
+                    inspectorEmail: user.email || '',
                     inspectorRole: user.rol || 'Inspector',
                     isLoadingData: false
                 });
                 return true;
             }
 
-            set({ dataError: "Acceso denegado: Usuario no autorizado", isLoadingData: false });
+            set({ dataError: data.message || "Acceso denegado: Usuario no autorizado", isLoadingData: false });
             return false;
         } catch (error: unknown) {
             const errorMessage = error instanceof Error ? error.message : "Error al validar acceso";
@@ -156,12 +158,11 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     },
 
     fetchData: async () => {
-        const email = get().inspectorEmail;
-        if (!email) return;
+        const rut = get().inspectorRut;
+        if (!rut) return;
 
         set({ isLoadingData: true, dataError: null });
         try {
-            // Optimización: Verificar salud de los 3 libros antes de cargar agenda
             const isHealthy = await get().checkConnection();
             if (!isHealthy) {
                 throw new Error("Sin conexión con base de datos");
@@ -171,7 +172,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
                 method: 'POST',
                 body: JSON.stringify({
                     action: 'getAssignments',
-                    email: email
+                    rut: rut
                 })
             });
 
@@ -249,7 +250,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         const state = get();
         const payload = {
             action: 'startProcess',
-            email: state.inspectorEmail,
+            rut: state.inspectorRut,
             departamento: String(unit.number),
             fecha: unit.date,
             hora: unit.time,
@@ -279,7 +280,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     getActaStatus: async (unit: Unit) => {
         const state = get();
         try {
-            const url = `${APPS_SCRIPT_URL}?action=getActaStatus&id_inspector=${encodeURIComponent((state.inspectorEmail || "").toLowerCase().trim())}&departamento=${encodeURIComponent(unit.number)}&tipo_proceso=${encodeURIComponent(unit.processTypeLabel || "")}`;
+            const url = `${APPS_SCRIPT_URL}?action=getActaStatus&rut=${encodeURIComponent(state.inspectorRut || "")}&departamento=${encodeURIComponent(unit.number)}&tipo_proceso=${encodeURIComponent(unit.processTypeLabel || "")}`;
             const data = await fetchJSON(url);
             return data;
         } catch (error: unknown) {
@@ -303,7 +304,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
 
         const payload = {
             action: "completeProcess",
-            email: state.inspectorEmail,
+            rut: state.inspectorRut,
             departamento: String(state.selectedUnit.number),
             fecha: state.selectedUnit.date,
             hora: state.selectedUnit.time,
@@ -354,12 +355,12 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
 
     getDailyAgenda: () => {
         const state = get();
-        const { units, inspectorEmail } = state;
-        if (!inspectorEmail) return [];
-        const currentEmail = inspectorEmail.toLowerCase().trim();
+        const { units, inspectorRut } = state;
+        if (!inspectorRut) return [];
+        const currentRut = inspectorRut.toUpperCase().trim();
 
         return units.filter(u => {
-            if ((u.inspectorId || '').toLowerCase().trim() !== currentEmail) return false;
+            if ((u.inspectorId || '').replace(/[^0-9kK]/g, '').toUpperCase().trim() !== currentRut) return false;
             if ((u.activeState || '').toLowerCase().trim() !== 'activo') return false;
             if (!u.date) return false;
             const parts = u.date.trim().split(/[-/]/);
@@ -379,14 +380,14 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
 
     getUpcomingDeliveries: () => {
         const state = get();
-        const { units, inspectorEmail } = state;
-        if (!inspectorEmail) return [];
-        const currentEmail = inspectorEmail.toLowerCase().trim();
+        const { units, inspectorRut } = state;
+        if (!inspectorRut) return [];
+        const currentRut = inspectorRut.toUpperCase().trim();
         const nowAtStart = startOfDay(new Date());
         const endDate = endOfDay(addDays(nowAtStart, 14));
 
         return units.filter(u => {
-            if ((u.inspectorId || '').toLowerCase().trim() !== currentEmail) return false;
+            if ((u.inspectorId || '').replace(/[^0-9kK]/g, '').toUpperCase().trim() !== currentRut) return false;
             if ((u.activeState || '').toLowerCase().trim() !== 'activo') return false;
             if (!u.date) return false;
             const parts = u.date.trim().split(/[-/]/);

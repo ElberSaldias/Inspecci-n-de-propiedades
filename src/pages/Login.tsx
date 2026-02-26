@@ -9,7 +9,8 @@ const Login: React.FC = () => {
     const validateLogin = useInspectionStore((state) => state.validateLogin);
 
     const [rutInput, setRutInput] = useState('');
-    const [error, setError] = useState('');
+    const dataError = useInspectionStore((state) => state.dataError);
+    const [localError, setLocalError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
     // If already logged in, redirect to dashboard
@@ -21,10 +22,10 @@ const Login: React.FC = () => {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError('');
+        setLocalError('');
 
         if (!rutInput.trim()) {
-            setError('Ingrese un RUT o Email válido.');
+            setLocalError('Por favor ingrese su RUT.');
             return;
         }
 
@@ -34,8 +35,6 @@ const Login: React.FC = () => {
 
         if (isValid) {
             navigate('/');
-        } else {
-            setError('Usuario no autorizado o no encontrado en la base de datos.');
         }
     };
 
@@ -66,13 +65,17 @@ const Login: React.FC = () => {
                                 type="text"
                                 id="inspector-rut"
                                 className="block w-full pl-11 pr-4 py-4 border-2 border-slate-200 rounded-xl focus:ring-0 focus:border-primary-500 bg-slate-50 transition-colors text-lg"
-                                placeholder="Ejemplo: 12345678-9"
+                                placeholder="Ejemplo: 12345678-9 o 12345678"
                                 value={rutInput}
                                 onChange={(e) => setRutInput(e.target.value)}
                                 autoFocus
                             />
                         </div>
-                        {error && <p className="mt-2 text-sm text-red-600 font-medium">{error}</p>}
+                        {(localError || dataError) && (
+                            <p className="mt-2 text-sm text-red-600 font-medium">
+                                {localError || dataError}
+                            </p>
+                        )}
                     </div>
 
                     <button
