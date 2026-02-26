@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import Papa from 'papaparse';
 import type { Observation, ProcessType, Unit, Project } from '../types';
 import { isToday, parse, isValid, parseISO, addDays, isWithinInterval, startOfDay, endOfDay, format } from 'date-fns';
+import { APPS_SCRIPT_URL, PUBLISHED_CSV_URL } from '../config';
+import { fetchJSON } from '../apiClient';
 
 interface InspectionState {
     inspectorRut: string | null;
@@ -33,6 +35,8 @@ interface InspectionState {
     getUpcomingDeliveries: () => Unit[];
     getProjectsFromAgenda: () => Project[];
     validateRut: (rut: string) => boolean;
+    connectionStatus: 'IDLE' | 'CHECKING' | 'CONNECTED' | 'ERROR';
+    checkConnection: () => Promise<boolean>;
 }
 
 export const useInspectionStore = create<InspectionState>((set, get) => ({
@@ -47,6 +51,7 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     projects: [],
     isLoadingData: false,
     dataError: null,
+    connectionStatus: 'IDLE',
 
     // Helper for Chilean RUT validation
     validateRut: (rut: string) => {
@@ -108,13 +113,32 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         processType: null,
         observations: [],
         units: [],
-        projects: []
+        projects: [],
+        connectionStatus: 'IDLE'
     }),
+
+    checkConnection: async () => {
+        set({ connectionStatus: 'CHECKING' });
+        try {
+            // Reintentamos con un timestamp para evitar cache
+            const data = await fetchJSON(`${APPS_SCRIPT_URL}?action=health&t=${Date.now()}`);
+            if (data.ok) {
+                set({ connectionStatus: 'CONNECTED' });
+                return true;
+            }
+            throw new Error(data.message || 'Respuesta de estado inválida');
+        } catch (error) {
+            console.error('Health Check Failed:', error);
+            set({ connectionStatus: 'ERROR' });
+            return false;
+        }
+    },
 
     validateLogin: async (input: string) => {
         try {
-            // Se agrega un timestamp (t=...) para evadir cache del navegador
-            const response = await fetch(`https://docs.google.com/spreadsheets/d/e/2PACX-1vQ9LrYOr-j7mtY4F51Aw2CtGvP_l1dMW5-sZGLQvyUGQ1lmVxyj9Hxe3z40QeVy5j7VkAsmbLUzSaDV/pub?output=csv&t=${Date.now()}`, { cache: "no-store" });
+            const response = await fetch(`${PUBLISHED_CSV_URL}&t=${Date.now()}`, { cache: "no-store" });
+            if (!response.ok) throw new Error(`Error ${response.status} al validar login`);
+
             const csvText = await response.text();
             const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
 
@@ -165,11 +189,16 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     fetchData: async () => {
         set({ isLoadingData: true, dataError: null });
         try {
-            // Se elimina el param t= para evitar errores en algunos proxies de Google, usando headers de cache
-            const response = await fetch(`https://docs.google.com/spreadsheets/d/e/2PACX-1vSjo8-wZ72MSUQcaKuooUzuxk1Uj8FTV1DeMEy24z5pqIDblK2GfCOAT3E2S3aQBnbOmoe6VbBt-Qey/pub?output=csv`, {
+            const response = await fetch(`${PUBLISHED_CSV_URL}&t=${Date.now()}`, {
                 cache: "no-store",
                 headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
             });
+
+            if (!response.ok) {
+                console.error(`[FetchData Error] Status: ${response.status} | URL: ${PUBLISHED_CSV_URL}`);
+                throw new Error(`No se pudo conectar con el servidor de datos (Spreadsheet). Status: ${response.status}`);
+            }
+
             const unitsCsvText = await response.text();
 
 
@@ -263,7 +292,6 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         }
 
         const project = state.projects.find(p => p.id === state.selectedUnit?.projectId);
-        const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyuuCHHUBE_zcRi1qqZQ-ERkXEnqctDOo4muW2U7hDbL0dYl4qMovrD_XbvnddwoUkEfA/exec";
 
         // Mapeo de recintos
         const ROOM_NAMES: Record<string, string> = {
@@ -342,15 +370,13 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         });
 
         try {
-            const response = await fetch(WEBAPP_URL, {
+            const data = await fetchJSON(APPS_SCRIPT_URL, {
                 method: "POST",
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(payload)
             });
-            const data = await response.json();
 
             if (data.ok) {
-                // Sincronización inmediata para bloquear la tarjeta
                 await get().fetchData();
             } else {
                 const errorDetail = `Depto ${payload.departamento}, ${payload.fecha} ${payload.hora}, ${payload.tipo_proceso}`;
@@ -359,9 +385,9 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
             }
 
             return data;
-        } catch (error: unknown) {
+        } catch (error: any) {
             console.error("Webhook POST Error:", error);
-            const message = error instanceof Error ? error.message : 'Error de red al intentar contactar a Google Apps Script';
+            const message = error.message || 'Error de red al intentar contactar a Google Apps Script';
             return { ok: false, error: message };
         }
     },

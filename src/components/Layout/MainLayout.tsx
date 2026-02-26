@@ -13,11 +13,16 @@ const MainLayout: React.FC = () => {
         inspectorEmail,
         inspectorRole,
         fetchData,
+        checkConnection,
         logout
     } = useInspectionStore();
 
     const [showProfile, setShowProfile] = useState(false);
     const isDashboard = location.pathname === '/';
+
+    useEffect(() => {
+        checkConnection();
+    }, [checkConnection]);
 
     useEffect(() => {
         if (!inspectorRut && location.pathname !== '/login') {

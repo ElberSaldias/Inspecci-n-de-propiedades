@@ -15,6 +15,9 @@ const Dashboard: React.FC = () => {
     const units = useInspectionStore((state) => state.units);
     const isLoadingData = useInspectionStore((state) => state.isLoadingData);
     const dataError = useInspectionStore((state) => state.dataError);
+    const connectionStatus = useInspectionStore((state) => state.connectionStatus);
+    const checkConnection = useInspectionStore((state) => state.checkConnection);
+    const fetchData = useInspectionStore((state) => state.fetchData);
 
     const getUpcomingDeliveries = useInspectionStore((state) => state.getUpcomingDeliveries);
     const upcomingDeliveries = getUpcomingDeliveries();
@@ -105,9 +108,21 @@ const Dashboard: React.FC = () => {
 
     if (dataError) {
         return (
-            <div className="bg-red-50 text-red-600 p-6 rounded-2xl border border-red-200 text-center animate-in fade-in duration-300">
-                <p className="font-bold mb-2">Error al cargar datos</p>
-                <p className="text-sm">{dataError}</p>
+            <div className="flex flex-col items-center justify-center h-[60vh] p-6 text-center animate-in fade-in duration-300">
+                <div className="bg-red-50 text-red-600 p-8 rounded-3xl border-2 border-red-100 max-w-sm">
+                    <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Calendar size={32} />
+                    </div>
+                    <p className="font-bold text-lg mb-2">Error de conexión</p>
+                    <p className="text-sm text-red-500 mb-6">No se pudo conectar con Google Sheets. Verifica la URL o permisos.</p>
+                    <button
+                        onClick={() => fetchData()}
+                        className="w-full bg-red-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-red-700 transition-colors shadow-lg shadow-red-200"
+                    >
+                        Reintentar carga
+                    </button>
+                    <p className="mt-4 text-[10px] text-red-400 font-mono break-all">{dataError}</p>
+                </div>
             </div>
         );
     }
@@ -126,6 +141,27 @@ const Dashboard: React.FC = () => {
                 <div className="absolute top-0 right-0 -mx-10 -my-10 opacity-20">
                     <ClipboardCheck size={200} />
                 </div>
+            </div>
+
+            {/* Connection Status Bar */}
+            <div className="bg-white border border-slate-200 p-3 rounded-2xl flex items-center justify-between shadow-sm">
+                <div className="flex items-center space-x-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${connectionStatus === 'CONNECTED' ? 'bg-green-500 animate-pulse' :
+                        connectionStatus === 'ERROR' ? 'bg-red-500' : 'bg-slate-300'
+                        }`} />
+                    <span className="text-xs font-bold text-slate-600">
+                        {connectionStatus === 'CONNECTED' ? 'Conectado a Google Cloud' :
+                            connectionStatus === 'CHECKING' ? 'Verificando...' :
+                                connectionStatus === 'ERROR' ? 'Sin conexión' : 'Estado desconocido'}
+                    </span>
+                </div>
+                <button
+                    onClick={() => checkConnection()}
+                    disabled={connectionStatus === 'CHECKING'}
+                    className="text-[10px] font-bold text-primary-600 bg-primary-50 px-3 py-1.5 rounded-lg hover:bg-primary-100 transition-colors uppercase tracking-wider disabled:opacity-50"
+                >
+                    {connectionStatus === 'ERROR' ? 'Reintentar' : 'Probar conexión'}
+                </button>
             </div>
 
             {/* Debug Mode Info (Only in Dev) */}
