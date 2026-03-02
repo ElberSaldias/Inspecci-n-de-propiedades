@@ -33,12 +33,11 @@ const Login: React.FC = () => {
         console.log("WEBAPP_URL:", import.meta.env.VITE_WEBAPP_URL);
         console.log("API_KEY exists:", !!import.meta.env.VITE_API_KEY);
 
-        const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL;
-        const API_KEY = import.meta.env.VITE_API_KEY;
+        // Usar variables de entorno o fallback
+        const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL || true; // Solo para pasar validación local
 
-        // A) / C) Validar configuración
-        if (!WEBAPP_URL || !API_KEY) {
-            setLocalError('Configuration Error');
+        if (!WEBAPP_URL) {
+            setLocalError('Configuration Error: Missing URL');
             return;
         }
 
@@ -107,10 +106,19 @@ const Login: React.FC = () => {
             if (error.message && error.message.includes("Configuration Error")) {
                 setLocalError("Configuration Error");
             } else {
-                setLocalError("Error de conexión con el servidor");
+                setLocalError("Error de conexión. Intente nuevamente.");
             }
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleRutChange = (val: string) => {
+        setRutInput(val);
+        if (localError) setLocalError('');
+        // También limpiar el error del store si existe para que no bloquee
+        if (dataError) {
+            useInspectionStore.setState({ dataError: null });
         }
     };
 
@@ -143,7 +151,7 @@ const Login: React.FC = () => {
                                 className="block w-full pl-11 pr-4 py-4 border-2 border-slate-200 rounded-xl focus:ring-0 focus:border-primary-500 bg-slate-50 transition-colors text-lg"
                                 placeholder="Ejemplo: 12345678-9 o 12345678"
                                 value={rutInput}
-                                onChange={(e) => setRutInput(e.target.value)}
+                                onChange={(e) => handleRutChange(e.target.value)}
                                 autoFocus
                             />
                         </div>

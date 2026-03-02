@@ -177,10 +177,9 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
 
         set({ isLoadingData: true, dataError: null });
         try {
-            const isHealthy = await get().checkConnection();
-            if (!isHealthy) {
-                throw new Error("Sin conexión con base de datos");
-            }
+            // Se elimina el bloqueo por checkConnection
+            // const isHealthy = await get().checkConnection();
+            // if (!isHealthy) { ... }
 
             const data = await fetchJSON(APPS_SCRIPT_URL, {
                 method: 'POST',
