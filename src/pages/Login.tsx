@@ -30,16 +30,7 @@ const Login: React.FC = () => {
         setLocalError('');
 
         // D) Diagnóstico temporal
-        console.log("WEBAPP_URL:", import.meta.env.VITE_WEBAPP_URL);
-        console.log("API_KEY exists:", !!import.meta.env.VITE_API_KEY);
-
-        // Usar variables de entorno o fallback
-        const WEBAPP_URL = import.meta.env.VITE_WEBAPP_URL || true; // Solo para pasar validación local
-
-        if (!WEBAPP_URL) {
-            setLocalError('Configuration Error: Missing URL');
-            return;
-        }
+        console.log("LOGIN ATTEMPT:", rutInput);
 
         if (!rutInput.trim()) {
             setLocalError('Por favor ingrese su RUT.');
@@ -53,19 +44,23 @@ const Login: React.FC = () => {
             // C) Llamar api("login", { rut })
             const login = await api("login", { rut: normalizedRut });
 
-            if (!login.ok) {
-                setLocalError(login.error || "RUT no encontrado");
+            // Nota: fetchJSON ya lanza error si !login.ok, así que esto podría ser redundante
+            // pero lo mantenemos por si acaso la estructura cambia.
+            if (!login || !login.ok) {
+                setLocalError(login?.error || login?.message || "RUT no encontrado");
                 setIsLoading(false);
                 return;
             }
 
             // C) si ok, usar user.email para llamar api("assignments", { email: user.email })
-            const assignmentsResponse = await api("assignments", {
-                email: login.user.email
+            // Nota: El store usa "getAssignments", validaremos ambos o usaremos el del store.
+            const assignmentsResponse = await api("getAssignments", {
+                email: login.user.email,
+                rut: normalizedRut
             });
 
             if (!assignmentsResponse.ok) {
-                setLocalError("Error obteniendo asignaciones");
+                setLocalError(assignmentsResponse.error || "Error obteniendo asignaciones");
                 setIsLoading(false);
                 return;
             }
@@ -76,12 +71,12 @@ const Login: React.FC = () => {
 
             if (assignmentsResponse.data && Array.isArray(assignmentsResponse.data)) {
                 const parsedUnits: Unit[] = assignmentsResponse.data.map((row: Record<string, unknown>) => ({
-                    id: `unit-${row.edificio}-${row.departamento}`,
-                    projectId: (row.edificio as string) || 'PROYECTO',
-                    number: String(row.departamento || ''),
-                    ownerName: (row.cliente as string) || 'Cliente',
-                    ownerRut: '',
-                    status: row.estado === 'Realizada' ? 'COMPLETED' : 'PENDING',
+                    id: String(row.id || `unit-${row.edificio}-${row.departamento}`),
+                    projectId: (row.edificio as string) || (row.proyecto as string) || 'PROYECTO',
+                    number: String(row.departamento || row.depto || ''),
+                    ownerName: (row.cliente as string) || (row.propietario as string) || 'Cliente',
+                    ownerRut: (row.rut_cliente as string) || '',
+                    status: (row.estado as string) === 'Realizada' ? 'COMPLETED' : 'PENDING',
                     date: row.fecha as string,
                     time: row.hora as string,
                     processTypeLabel: row.tipo_proceso as string,
@@ -103,11 +98,8 @@ const Login: React.FC = () => {
         } catch (err) {
             const error = err as Error;
             console.error("Login Error:", error);
-            if (error.message && error.message.includes("Configuration Error")) {
-                setLocalError("Configuration Error");
-            } else {
-                setLocalError("Error de conexión. Intente nuevamente.");
-            }
+            // Mostrar el mensaje real (ej: "RUT no encontrado" o "Error de servidor")
+            setLocalError(error.message || "Error de conexión. Intente nuevamente.");
         } finally {
             setIsLoading(false);
         }
